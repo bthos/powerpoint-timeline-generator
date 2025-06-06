@@ -28,7 +28,7 @@ Go Live           | 6/15/2025 |           | Milestone | green   | Deployment
 1. Open PowerPoint (any presentation)
 2. Press `Alt + F11` to open the VBA Editor
 3. Insert → Module
-4. Copy and paste the entire timeline.bas code (or File → Import File)
+4. Copy and paste the entire **timeline.bas** code (or File → Import File)
 5. Press `F5` or Run → Run Sub to execute `CreateTimelineFromData`
 6. View → Immediate Window (or `Ctrl+G`) to see outout and error messages
 
