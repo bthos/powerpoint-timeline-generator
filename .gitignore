@@ -1,0 +1,116 @@
+# Office/Excel temporary files
+~$*.xlsx
+~$*.xlsm
+~$*.xls
+~$*.pptx
+~$*.pptm
+~$*.ppt
+~$*.docx
+~$*.docm
+~$*.doc
+
+# Excel specific
+*.tmp
+*.xlk
+*.xlw
+
+# PowerPoint specific
+*.ppt.tmp
+*.pptx.tmp
+
+# VBA specific
+*.exd
+*.frx
+*.dca
+
+# Windows thumbnail cache files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# Visual Studio temporary files
+.vs/
+*.suo
+*.user
+*.sln.docstates
+
+# OneDrive specific
+*.tmp
+*.temp
+.~lock.*
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Log files
+*.log
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# IDE files
+.vscode/
+.idea/
+.github/
+.clinerules/
+*.swp
+*.swo
+
+# Node modules (if any web tools are added)
+node_modules/
+npm-debug.log*
+
+# Compiled files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Test files and outputs
+test_output/
+screenshots/
+exports/
+
+# Personal notes and drafts
+.notes/
+.examples/
+notes.txt
+draft*
+TODO.txt
+*.draft
+
+# Version control
+.git/
+.svn/
+.hg/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

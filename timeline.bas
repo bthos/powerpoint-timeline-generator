@@ -38,15 +38,16 @@
 Type TimelineConfig
     slideWidth As Single
     slideHeight As Single
-    timelineTop As Single
-    TimelineAxisTop As Single
-    axisY As Single
+    timelineAxisY As Single
+    calendarHeaderY As Single
+    swimlaneStartY As Single
     axisPadding As Integer
     circleSize As Integer
     elementHeight As Integer
     laneHeight As Integer
     swimlaneHeight As Integer
-    SwimlaneHeaderWidth As Integer
+    swimlaneEmptyHeight As Integer
+    swimlaneHeaderWidth As Single
     fontName As String
     fontSize As Integer
     ' === DYNAMIC LABEL WIDTH CONSTRAINTS ===
@@ -61,21 +62,17 @@ Type TimelineConfig
     phaseLabelMinWidth As Single            ' Minimum width for phase labels
     phaseLabelMaxWidth As Single            ' Maximum width for phase labels
     ' === LABEL POSITIONING CONSTANTS ===
-    labelVerticalOffset As Integer          ' Vertical offset for centering labels to shapes (-8)
-    labelHeight As Integer                  ' Standard height for event labels (16px)
-    labelSpacingToShape As Integer          ' Standard spacing from shape edge to label (23px)
+    labelVerticalOffset As Single           ' Vertical offset for centering labels to shapes (-8)
+    labelHeight As Single                  ' Standard height for event labels (16px)
     labelInternalPadding As Single          ' Padding for labels inside bars (20px, 10px each side)
     ' === SPACING AND LAYOUT CONSTRAINTS ===
     swimlanePadding As Single               ' Padding between swimlanes (5px)
     swimlaneContentPadding As Single        ' Buffer from swimlane top to first element (10px)
     laneSpacingWithTopLabels As Single      ' Lane spacing when labels are on top (35px)
     laneSpacingWithInsideLabels As Single   ' Lane spacing when labels are inside (20px)
-    elementBottomPadding As Single          ' Padding below bottom-most element (5px)    
-    milestoneExtraSpace As Single           ' Extra space below milestones for date labels (15px)
+    elementBottomPadding As Single          ' Padding below bottom-most element (5px)
     ' === MINIMUM DIMENSIONS AND CONSTRAINTS ===
     minimumBarWidth As Single               ' Minimum width for bars with invalid dates (10px)
-    minimumShapeDimension As Single         ' Minimum dimension for shapes to prevent errors (1px)
-    maximumSlidePosition As Single          ' Maximum slide position for validation (2000px)
     bottomMarginForSlides As Single         ' Bottom margin for multi-slide calculations (30px)
     ' === SLIDE LAYOUT CONFIGURATION ===
     slideLayoutName As String               ' User-configurable slide layout name (e.g., "Timeline Layout")
@@ -120,7 +117,7 @@ Sub CreateTimelineFromData()
     
     If requiredSlides = 1 Then
         ' Single slide - use existing logic
-        Dim sld As Slide: sld = CreateTimelineSlide()
+        Dim sld As Slide: Set sld = CreateTimelineSlide()
         Call RenderTimeline(sld, config, dateRange, swimlaneOrg, timelineData)
         Debug.Print Format(Now, "dd-mmm-yyyy hh:mm:ss") & "> Timeline generation completed successfully - Single slide created with " & swimlaneOrg.Count & " swimlanes"
     Else
@@ -145,15 +142,16 @@ Function GetDefaultTimelineConfig() As TimelineConfig
         .fontSize = 9                       ' Standard font size for labels
         .slideWidth = 960                   ' 16:9 aspect ratio
         .slideHeight = 540                  '
-        .timelineTop = 110                  ' Moved up to optimize space after phase area reduction
-        .TimelineAxisTop = 50               ' Calendar header area (50-70px)
-        .axisY = .timelineTop + 5           ' Swimlanes start at 115px with 5px buffer
+        .timelineAxisY = 110                ' Moved up to optimize space after phase area reduction
+        .calendarHeaderY = 50               ' Calendar header area (50-70px)
+        .swimlaneStartY = .timelineAxisY + 5         ' Swimlanes start at 115px with 5px buffer
         .axisPadding = 40                   ' Padding for timeline space
         .circleSize = 16                    ' Increased milestone size for better visibility
         .elementHeight = 16                 ' Slightly increased element height for better visibility
         .laneHeight = 48                    ' Increased lane spacing to accommodate top labels with proper gaps
         .swimlaneHeight = 85                ' Slightly increased swimlane spacing for more content
-        .SwimlaneHeaderWidth = 100          ' Header width for swimlane labels
+        .swimlaneEmptyHeight = 0            ' Empty swimlanes collapse to 0 height
+        .swimlaneHeaderWidth = 100          ' Header width for swimlane labels
         
         ' === CONFIGURABLE DYNAMIC LABEL WIDTH CONSTRAINTS ===
         ' Feature name labels (inside bars or on top)
@@ -179,7 +177,6 @@ Function GetDefaultTimelineConfig() As TimelineConfig
         ' === LABEL POSITIONING CONSTANTS ===
         .labelVerticalOffset = -8        ' Vertical offset for centering labels to shapes
         .labelHeight = 16                ' Standard height for event labels
-        .labelSpacingToShape = 23        ' Standard spacing from shape edge to label
         .labelInternalPadding = 1        ' Padding for labels inside bars (10px on each side)
         
         ' === SPACING AND LAYOUT CONSTRAINTS ===
@@ -188,13 +185,10 @@ Function GetDefaultTimelineConfig() As TimelineConfig
         .laneSpacingWithTopLabels = 35   ' Lane spacing when labels are on top
         .laneSpacingWithInsideLabels = 20 ' Lane spacing when labels are inside
         .elementBottomPadding = 2        ' Padding below bottom-most element
-        .milestoneExtraSpace = 15        ' Extra space below milestones for date labels
         
         ' === MINIMUM DIMENSIONS AND CONSTRAINTS ===
         .minimumBarWidth = 10            ' Minimum width for bars with invalid dates
-        .minimumShapeDimension = 1       ' Minimum dimension for shapes to prevent errors
-        .maximumSlidePosition = 2000     ' Maximum slide position for validation
-        .bottomMarginForSlides = 400      ' Bottom margin for multi-slide calculations
+        .bottomMarginForSlides = 30      ' Bottom margin for multi-slide calculations
         
     End With
 End Function
@@ -282,29 +276,15 @@ Sub RenderTimeline(sld As Slide, config As TimelineConfig, ByRef dateRange As Ti
     ' Main rendering pipeline for timeline visualization
     
     ' Calculate scale factor
-    dateRange.scaleFactor = (config.slideWidth - config.SwimlaneHeaderWidth - config.axisPadding) / _
+    dateRange.scaleFactor = (config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding) / _
                            (dateRange.maxDate - dateRange.minDate)
-    
-    ' Store values in local variables to avoid ByRef issues with UDT members
-    Dim minDate As Date: minDate = dateRange.minDate
-    Dim maxDate As Date: maxDate = dateRange.maxDate
-    Dim scaleFactor As Double: scaleFactor = dateRange.scaleFactor
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim timelineTop As Single: timelineTop = config.TimelineAxisTop
-    Dim fontName As String: fontName = config.fontName
-    Dim slideHeight As Single: slideHeight = config.slideHeight
-    
+
     ' Render swimlane structure
     Call RenderSwimlanes(sld, config, swimlaneOrg)
     
     ' Render top timeline axis with enhanced features
-    Call DrawEnhancedTopTimelineAxis(sld, minDate, maxDate, _
-        scaleFactor, headerWidth, timelineTop, fontName)
-    
-    ' Add vertical grid lines for better visual reference - REMOVED per user request
-    ' Call AddVerticalGridLines(sld, minDate, maxDate, _
-    '     scaleFactor, headerWidth, timelineTop, slideHeight)
-    
+    Call DrawEnhancedTopTimelineAxis(sld, dateRange, config)
+
     ' Render events in each swimlane
     Call RenderSwimlaneEvents(sld, config, dateRange, swimlaneOrg)
     
@@ -315,17 +295,8 @@ End Sub
 Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As SwimlaneOrganization)
     ' Render swimlane headers, backgrounds, and axes with dynamic heights
     
-    ' Extract config values to avoid ByRef issues
-    Dim axisY As Single: axisY = config.axisY
-    Dim baseSwimlaneHeight As Integer: baseSwimlaneHeight = config.swimlaneHeight
-    Dim fontName As String: fontName = config.fontName
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim slideWidth As Single: slideWidth = config.slideWidth
-    Dim axisPadding As Integer: axisPadding = config.axisPadding
-    Dim laneHeight As Integer: laneHeight = config.laneHeight
-    
     ' Calculate dynamic positions for each swimlane
-    Dim currentY As Single: currentY = axisY
+    Dim currentY As Single: currentY = config.swimlaneStartY
     Dim swimlanePaddingValue As Single: swimlanePaddingValue = config.swimlanePadding ' User-configurable padding between swimlanes
     
     Dim i As Integer
@@ -346,13 +317,9 @@ Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As Swiml
             Dim tempEventLanes() As Integer
             ReDim tempEventLanes(0 To UBound(tempEvents))
             
-            ' Extract values to avoid ByRef issues with UDT members
-            Dim placeholderScaleFactor As Double: placeholderScaleFactor = 1
-            Dim placeholderMinDate As Date: placeholderMinDate = Date
-            
             ' Use the new content-based height calculation with proper parameters
             dynamicSwimlaneHeight = CalculateSwimlaneActualHeight(tempEvents, tempEventLanes, config, _
-                placeholderScaleFactor, headerWidth, placeholderMinDate)
+                1, headerWidth, Date)
         Else
             dynamicSwimlaneHeight = 0 ' Empty swimlanes collapse to 0 height
         End If
@@ -365,8 +332,8 @@ Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As Swiml
         
         ' Dynamic background size based on actual content - EXTENDED BY 25PX LEFT AND RIGHT
         Call DrawSwimlaneBackground(sld, headerWidth - 25, currentY, _
-            slideWidth - headerWidth - axisPadding + 50, _
-            dynamicSwimlaneHeight, i)
+            config.slideWidth - headerWidth - config.axisPadding + 50, _
+            dynamicSwimlaneHeight)
         
         ' Move to next swimlane position with padding
         currentY = currentY + dynamicSwimlaneHeight + swimlanePaddingValue
@@ -377,21 +344,11 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
                         swimlaneOrg As SwimlaneOrganization)
     ' Render events within each swimlane with dynamic positioning based on actual heights
     
-    ' Extract values to avoid ByRef issues with UDT members
-    Dim scaleFactor As Double: scaleFactor = dateRange.scaleFactor
-    Dim minDate As Date: minDate = dateRange.minDate
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim fontName As String: fontName = config.fontName
-    Dim circleSize As Integer: circleSize = config.circleSize
-    Dim elementHeight As Integer: elementHeight = config.elementHeight
-    Dim laneHeight As Integer: laneHeight = config.laneHeight
-    
     ' Extract additional config values to avoid ByRef issues
-    Dim axisY As Single: axisY = config.axisY
     Dim baseSwimlaneHeight As Integer: baseSwimlaneHeight = config.swimlaneHeight
     
     ' Calculate dynamic positions for each swimlane (same logic as RenderSwimlanes)
-    Dim currentY As Single: currentY = axisY
+    Dim currentY As Single: currentY = config.swimlaneStartY
     Dim swimlanePaddingValue As Single: swimlanePaddingValue = config.swimlanePadding ' User-configurable padding between swimlanes - same as RenderSwimlanes
     
     Dim i As Integer
@@ -403,8 +360,7 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
             Dim eventLanes() As Integer
             ReDim eventLanes(0 To UBound(currentEvents))
             Dim totalLanes As Integer
-            totalLanes = AssignLanesToEvents(currentEvents, eventLanes, _
-                scaleFactor, headerWidth, minDate)
+            totalLanes = AssignLanesToEvents(currentEvents, eventLanes, dateRange, config)
             
             ' Draw lane separator lines if multiple lanes are needed
             If totalLanes > 1 Then
@@ -413,8 +369,8 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
             
             ' Place events with enhanced styling using dynamic Y position
             Call PlaceEventsInSwimlane(sld, currentEvents, eventLanes, currentY, _
-                scaleFactor, headerWidth, minDate, _
-                fontName, circleSize, elementHeight, laneHeight)
+                dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate, _
+                config.fontName, config.circleSize, config.elementHeight, config.laneHeight)
         End If
         
         ' Calculate actual height based on content (NEW SYSTEM - matching RenderSwimlanes)
@@ -422,7 +378,7 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
         If Not IsEmpty(currentEvents) Then
             ' Use the new content-based height calculation with proper parameters
             dynamicSwimlaneHeight = CalculateSwimlaneActualHeight(currentEvents, eventLanes, config, _
-                scaleFactor, headerWidth, minDate) ' Use actual parameters available in this function
+                scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate) ' Use actual parameters available in this function
         Else
             dynamicSwimlaneHeight = 0 ' Empty swimlanes collapse to 0 height
         End If
@@ -445,13 +401,6 @@ End Sub
 Sub RenderPhasesInDedicatedArea(sld As Slide, config As TimelineConfig, dateRange As TimelineDateRange, data() As Variant)
     ' Render all phases in the optimized dedicated area between calendar header and swimlanes
     
-    ' Extract values to avoid ByRef issues with UDT members
-    Dim scaleFactor As Double: scaleFactor = dateRange.scaleFactor
-    Dim minDate As Date: minDate = dateRange.minDate
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim fontName As String: fontName = config.fontName
-    Dim elementHeight As Integer: elementHeight = config.elementHeight
-    
     ' Process all events to find and render phases
     Dim i As Integer
     For i = 0 To UBound(data)
@@ -472,9 +421,9 @@ Sub RenderPhasesInDedicatedArea(sld As Slide, config As TimelineConfig, dateRang
             End If
             
             Dim colorName As String: colorName = data(i, 4)
-            Dim xPos As Single: xPos = headerWidth + (startDate - minDate) * scaleFactor
-            Dim phaseEndX As Single: phaseEndX = headerWidth + (endDate - minDate) * scaleFactor
-            Dim phaseelementHeight As Single: phaseelementHeight = CSng(elementHeight + 8) ' Slightly larger for two-line labels
+            Dim xPos As Single: xPos = config.swimlaneHeaderWidth + (startDate - dateRange.minDate) * dateRange.scaleFactor
+            Dim phaseEndX As Single: phaseEndX = config.swimlaneHeaderWidth + (endDate - dateRange.minDate) * dateRange.scaleFactor
+            Dim phaseelementHeight As Single: phaseelementHeight = CSng(config.elementHeight + 8) ' Slightly larger for two-line labels
             
             ' Validate date order and calculate proper width for phases
             Dim phaseWidth As Single: phaseWidth = phaseEndX - xPos
@@ -505,7 +454,7 @@ Sub RenderPhasesInDedicatedArea(sld As Slide, config As TimelineConfig, dateRang
             End If
             
             ' Add two-line phase labels (main label + duration) vertically centered in block
-            Call AddTwoLinePhaseLabels(sld, phaseCenterX, phaseYPos, label, phaseDurationText, fontName)
+            Call AddTwoLinePhaseLabels(sld, phaseCenterX, phaseYPos, label, phaseDurationText, config.fontName)
         End If
         
 NextPhase:
@@ -514,7 +463,7 @@ End Sub
 
 ' === Swimlane Organization Functions ===
 
-Function OrganizeEventsBySwimlanes(milestoneData() As Variant, ByRef swimlanes() As String, ByRef swimlaneEvents() As Variant) As Integer
+Function OrganizeEventsBySwimlanes(timelineEvents() As Variant, ByRef swimlanes() As String, ByRef swimlaneEvents() As Variant) As Integer
     ' Organize events by swimlane and return the number of unique swimlanes
     
     Dim i As Integer, j As Integer
@@ -522,14 +471,14 @@ Function OrganizeEventsBySwimlanes(milestoneData() As Variant, ByRef swimlanes()
     Dim swimlaneCount As Integer: swimlaneCount = 0
     
     ' Find unique swimlanes (only for Features and Milestones)
-    For i = 0 To UBound(milestoneData)
-        Dim eventType As String: eventType = UCase(CStr(milestoneData(i, 3)))
+    For i = 0 To UBound(timelineEvents)
+        Dim eventType As String: eventType = UCase(CStr(timelineEvents(i, 3)))
         
         ' Phase swimlane validation: Phases should not have swimlanes
         If eventType = "PHASE" Then
-            swimlaneName = CStr(milestoneData(i, 5))
+            swimlaneName = CStr(timelineEvents(i, 5))
             If Trim(swimlaneName) <> "" And LCase(Trim(swimlaneName)) <> "default" Then
-                Debug.Print "WARNING: Phase '" & CStr(milestoneData(i, 0)) & "' has swimlane '" & swimlaneName & "' - ignoring swimlane (Phases are displayed in dedicated area)"
+                Debug.Print "WARNING: Phase '" & CStr(timelineEvents(i, 0)) & "' has swimlane '" & swimlaneName & "' - ignoring swimlane (Phases are displayed in dedicated area)"
             End If
             ' Skip phases when organizing swimlanes - they go to dedicated phase area
             GoTo NextEvent
@@ -537,7 +486,7 @@ Function OrganizeEventsBySwimlanes(milestoneData() As Variant, ByRef swimlanes()
         
         ' Only process Features and Milestones for swimlanes
         If eventType = "FEATURE" Or eventType = "MILESTONE" Then
-            swimlaneName = CStr(milestoneData(i, 5)) ' Swimlane is in column F (index 5)
+            swimlaneName = CStr(timelineEvents(i, 5)) ' Swimlane is in column F (index 5)
             If InStr(uniqueSwimlanes, swimlaneName & "|") = 0 Then
                 uniqueSwimlanes = uniqueSwimlanes & swimlaneName & "|"
                 swimlaneCount = swimlaneCount + 1
@@ -567,9 +516,9 @@ NextEvent:
         Dim eventCount As Integer: eventCount = 0
         
         ' Count ONLY Features and Milestones in this swimlane
-        For j = 0 To UBound(milestoneData)
-            Dim currentEventType As String: currentEventType = UCase(CStr(milestoneData(j, 3)))
-            If CStr(milestoneData(j, 5)) = swimlanes(i) And (currentEventType = "FEATURE" Or currentEventType = "MILESTONE") Then
+        For j = 0 To UBound(timelineEvents)
+            Dim currentEventType As String: currentEventType = UCase(CStr(timelineEvents(j, 3)))
+            If CStr(timelineEvents(j, 5)) = swimlanes(i) And (currentEventType = "FEATURE" Or currentEventType = "MILESTONE") Then
                 eventCount = eventCount + 1
             End If
         Next j
@@ -580,12 +529,12 @@ NextEvent:
             Dim eventIndex As Integer: eventIndex = 0
             
             ' Copy only Features and Milestones to swimlane array
-            For j = 0 To UBound(milestoneData)
-                Dim copyEventType As String: copyEventType = UCase(CStr(milestoneData(j, 3)))
-                If CStr(milestoneData(j, 5)) = swimlanes(i) And (copyEventType = "FEATURE" Or copyEventType = "MILESTONE") Then
+            For j = 0 To UBound(timelineEvents)
+                Dim copyEventType As String: copyEventType = UCase(CStr(timelineEvents(j, 3)))
+                If CStr(timelineEvents(j, 5)) = swimlanes(i) And (copyEventType = "FEATURE" Or copyEventType = "MILESTONE") Then
                     Dim k As Integer
                     For k = 0 To 5
-                        eventsInSwimlane(eventIndex, k) = milestoneData(j, k)
+                        eventsInSwimlane(eventIndex, k) = timelineEvents(j, k)
                     Next k
                     eventIndex = eventIndex + 1
                 End If
@@ -621,7 +570,7 @@ NextEvent:
 End Function
 
 Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Integer, swimlaneY As Single, _
-                         scaleFactor As Double, leftPadding As Single, minDate As Date, _
+                         scaleFactor As Double, headerWidth As Single, minDate As Date, _
                          fontName As String, circleSize As Integer, elementHeight As Integer, laneHeight As Integer)
     ' Place all events within a specific swimlane with enhanced styling
     ' Ensures all events stay within their designated swimlane boundaries
@@ -641,35 +590,18 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
     Dim lanesWithTopLabels() As Boolean
     ReDim lanesWithTopLabels(0 To maxLane)
     
-    For i = 0 To UBound(events)
+    For i = 0 To UBound(events)        
         If UCase(events(i, 3)) = "FEATURE" And IsDate(events(i, 2)) Then
-            Dim startDateCheck As Date: startDateCheck = Int(events(i, 1))
-            Dim endDateCheck As Date: endDateCheck = Int(events(i, 2))
-            Dim featureEndXCheck As Single: featureEndXCheck = leftPadding + (endDateCheck - minDate) * scaleFactor
-            Dim xPosCheck As Single: xPosCheck = leftPadding + (startDateCheck - minDate) * scaleFactor
-            Dim barWidthCheck As Single: barWidthCheck = featureEndXCheck - xPosCheck
-            
-            ' Calculate required width based on label text length
-            Dim labelText As String: labelText = CStr(events(i, 0)) ' Task name is in column A (index 0)
-            Dim labelWidth As Single: labelWidth = CalculateDynamicLabelWidth(labelText, config.fontSize, 30, 300) ' Minimum 30, Maximum 300
-            Dim requiredWidth As Single: requiredWidth = labelWidth + config.labelInternalPadding ' Add 20px padding (10px each side)
-            
-            ' Compare bar width with required space for label
-            If barWidthCheck < requiredWidth Then
+            ' Use centralized function to determine label position
+            If DetermineFeatureLabelPosition(CStr(events(i, 0)), CDate(events(i, 1)), CDate(events(i, 2)), scaleFactor, config) Then
                 ' Ensure we don't exceed array bounds
                 If eventLanes(i) <= maxLane Then
                     lanesWithTopLabels(eventLanes(i)) = True
                 End If
             End If
         ElseIf UCase(events(i, 3)) = "MILESTONE" Then
-            ' === MILESTONE TOP LABEL DETECTION ===
-            ' Check if milestone will have label on top (insufficient left space)
-            Dim milestoneStartXCheck As Single: milestoneStartXCheck = leftPadding + (Int(events(i, 1)) - minDate) * scaleFactor
-            Dim availableLeftSpaceCheck As Single: availableLeftSpaceCheck = milestoneStartXCheck - leftPadding
-            Dim estimatedLabelWidthCheck As Single: estimatedLabelWidthCheck = (Len(CStr(events(i, 0))) * 6) + 20 ' Approximate
-            Dim requiredLeftSpaceCheck As Single: requiredLeftSpaceCheck = estimatedLabelWidthCheck + 23 + 8 ' labelWidth + spacing + diamondHalfSize
-            
-            If availableLeftSpaceCheck < requiredLeftSpaceCheck Then
+            ' Use centralized function to determine label position
+            If DetermineMilestoneLabelPosition(CStr(events(i, 0)), CDate(events(i, 1)), scaleFactor, headerWidth, minDate, config) Then
                 ' Milestone will have label on top - mark lane for extra spacing
                 If eventLanes(i) <= maxLane Then
                     lanesWithTopLabels(eventLanes(i)) = True
@@ -687,7 +619,7 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
         Dim typ As String: typ = events(i, 3)
         Dim colorName As String: colorName = events(i, 4)
 
-        Dim xPosLoop As Single: xPosLoop = leftPadding + (startDateLoop - minDate) * scaleFactor
+        Dim xPosLoop As Single: xPosLoop = headerWidth + (startDateLoop - minDate) * scaleFactor
         
         ' OPTIMIZED LANE SPACING: Use config values instead of hardcoded margins
         Dim currentLane As Integer: currentLane = eventLanes(i)
@@ -708,30 +640,25 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
         ' Use calculated yPos for all events consistently
 
         If typ = "Milestone" Then
-            ' Use consistent positioning for all lanes
-            Dim milestoneYPos As Single: milestoneYPos = yPos
-            
             ' Draw milestone with enhanced styling
-            Call DrawCircle(sld, xPosLoop - circleSize / 2, milestoneYPos - circleSize / 2, circleSize, GetColor(colorName))
+            Call DrawCircle(sld, xPosLoop - circleSize / 2, yPos - circleSize / 2, circleSize, GetColor(colorName))
             
             ' Use intelligent label positioning same as feature bars
-            Call AddIntelligentMilestoneLabel(sld, xPosLoop, xPosLoop, milestoneYPos, label, fontName, 9, _
-                0, leftPadding, scaleFactor, minDate)
+            Call AddIntelligentMilestoneLabel(sld, xPosLoop, yPos, label, fontName, config.fontSize, 0)
             
             ' Add date label vertically centered to the diamond (moved up by 4px for better positioning)
-            Call AddDateLabel(sld, xPosLoop + 15, milestoneYPos - 8, Format(startDateLoop, "dd-mmm"), fontName, 8)
+            Call AddDateLabel(sld, xPosLoop + 15, yPos - 8, Format(startDateLoop, "dd-mmm"), fontName, 8)
             
             ' Draw connector line from swimlane axis to milestone
             If eventLanes(i) > 0 Then
-                Call DrawConnectorLine(sld, xPosLoop, swimlaneY, milestoneYPos - circleSize / 2)
+                Call DrawConnectorLine(sld, xPosLoop, swimlaneY, yPos - circleSize / 2)
             End If
             
         ElseIf typ = "Feature" And IsDate(endDateLoop) Then
             ' Use consistent positioning for all lanes
             Dim featureYPos As Single: featureYPos = yPos
-            
             ' Draw feature bar (replaces previous phase functionality)
-            Dim featureEndXLoop As Single: featureEndXLoop = leftPadding + (endDateLoop - minDate) * scaleFactor
+            Dim featureEndXLoop As Single: featureEndXLoop = headerWidth + (endDateLoop - minDate) * scaleFactor
             Dim elementHeightSingle As Single: elementHeightSingle = CSng(elementHeight)
             
             ' Validate date order and calculate proper width
@@ -761,7 +688,7 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
             
         ElseIf typ = "Phase" And IsDate(endDateLoop) Then
             ' Draw phase bar (collection of features - positioned between calendar and timeline)
-            Dim phaseEndXLoop As Single: phaseEndXLoop = leftPadding + (endDateLoop - minDate) * scaleFactor
+            Dim phaseEndXLoop As Single: phaseEndXLoop = headerWidth + (endDateLoop - minDate) * scaleFactor
             Dim phaseelementHeightLoop As Single: phaseelementHeightLoop = CSng(elementHeight + 6) ' Slightly larger for phases
             
             ' Validate date order and calculate proper width for phases
@@ -828,7 +755,7 @@ Sub AddEnhancedSwimlaneHeader(sld As Slide, x As Single, y As Single, txt As Str
     shp.Line.Visible = msoFalse
 End Sub
 
-Sub DrawSwimlaneBackground(sld As Slide, x As Single, y As Single, width As Single, height As Single, swimlaneIndex As Integer)
+Sub DrawSwimlaneBackground(sld As Slide, x As Single, y As Single, width As Single, height As Single)
     ' Draw swimlane section background with consistent hex #EDEDED color
     Dim bgColor As Long
     bgColor = RGB(237, 237, 237) ' Hex #EDEDED for all swimlanes
@@ -843,42 +770,37 @@ Sub DrawSwimlaneBackground(sld As Slide, x As Single, y As Single, width As Sing
         .Line.Visible = msoFalse
         .ZOrder msoSendToBack ' Send to back so other elements appear on top
     End With
-    
-    ' Add horizontal separator line at bottom of swimlane section - REMOVED per user request
-    ' If swimlaneIndex > 0 Then ' Don't add line above first swimlane
-    '     Dim separatorLine As Shape
-    '     Set separatorLine = sld.Shapes.AddLine(x, y, x + width, y)
-    '     With separatorLine.Line
-    '         .ForeColor.RGB = RGB(220, 220, 220) ' Light gray separator
-    '         .Weight = 1
-    '         .DashStyle = msoLineSolid
-    '     End With
-    '     separatorLine.ZOrder msoSendBackward ' Behind events but above background
-    ' End If
 End Sub
 
 ' Note: AddBarLabel and AddDateLabel functions moved to TEXT LABEL UTILITIES section to avoid duplication
 
-Sub DrawEnhancedTopTimelineAxis(sld As Slide, minDate As Date, maxDate As Date, scaleFactor As Double, leftPadding As Single, topY As Single, fontName As String)
+Sub DrawEnhancedTopTimelineAxis(sld As Slide, dateRange As TimelineDateRange, config As TimelineConfig)
     ' Draw enhanced top timeline axis with weekly segments, red timeline bar, and today marker
+    
+    ' Extract values from UDT parameters
+    Dim minDate As Date: minDate = dateRange.minDate
+    Dim maxDate As Date: maxDate = dateRange.maxDate
+    Dim scaleFactor As Double: scaleFactor = dateRange.scaleFactor
+    Dim headerWidth As Single: headerWidth = config.swimlaneHeaderWidth
+    Dim topY As Single: topY = config.timelineAxisY
     
     Dim timelineLength As Single: timelineLength = (maxDate - minDate) * scaleFactor
     
     ' === Calculate Today marker position first ===
     Dim today As Date: today = Date
     Dim todayX As Single: todayX = -1 ' Default to -1 if today is not in range
-    Dim redBarEndX As Single: redBarEndX = leftPadding + timelineLength ' Default to full length
+    Dim redBarEndX As Single: redBarEndX = headerWidth + timelineLength ' Default to full length
     
     If today >= minDate And today <= maxDate Then
-        todayX = leftPadding + (today - minDate) * scaleFactor
+        todayX = headerWidth + (today - minDate) * scaleFactor
         redBarEndX = todayX ' Red bar ends at Today marker
     End If
     
     ' === Draw Red Timeline Bar (thinner, on top of week block, ending at Today marker) ===
-    If redBarEndX > leftPadding Then ' Only draw if there's meaningful length
-        Dim redBarWidth As Single: redBarWidth = redBarEndX - leftPadding
+    If redBarEndX > headerWidth Then ' Only draw if there's meaningful length
+        Dim redBarWidth As Single: redBarWidth = redBarEndX - headerWidth
         Dim timelineBar As Shape
-        Set timelineBar = sld.Shapes.AddShape(msoShapeRoundedRectangle, leftPadding, topY - 25, redBarWidth, 3)
+        Set timelineBar = sld.Shapes.AddShape(msoShapeRoundedRectangle, headerWidth, topY - 25, redBarWidth, 3)
         With timelineBar
             .Fill.ForeColor.RGB = RGB(220, 20, 60) ' Crimson red timeline bar
             .Fill.Solid
@@ -894,10 +816,9 @@ Sub DrawEnhancedTopTimelineAxis(sld As Slide, minDate As Date, maxDate As Date, 
     
     ' === Add Enhanced Calendar Header Block with Weekly Date Segments ===
     ' Note: timelineLength already declared above, reusing the variable
-    
     ' Draw rounded calendar header block with hex color #323E4F
     Dim calendarHeaderBlock As Shape
-    Set calendarHeaderBlock = sld.Shapes.AddShape(msoShapeRoundedRectangle, leftPadding, topY - 25, timelineLength, 20)
+    Set calendarHeaderBlock = sld.Shapes.AddShape(msoShapeRoundedRectangle, headerWidth, topY - 25, timelineLength, 20)
     With calendarHeaderBlock
         .Fill.ForeColor.RGB = RGB(50, 62, 79) ' Hex #323E4F converted to RGB
         .Fill.Solid
@@ -923,7 +844,7 @@ Sub DrawEnhancedTopTimelineAxis(sld As Slide, minDate As Date, maxDate As Date, 
     
     Do While currentDate <= maxDate + 7 ' Add buffer for complete weeks
         If currentDate >= minDate And currentDate <= maxDate Then
-            Dim xPos As Single: xPos = leftPadding + (currentDate - minDate) * scaleFactor
+            Dim xPos As Single: xPos = headerWidth + (currentDate - minDate) * scaleFactor
             
             ' Vertical separator line between weeks (thin neutral grey, not touching edges)
             ' Do not add line after the last week date
@@ -942,8 +863,8 @@ Sub DrawEnhancedTopTimelineAxis(sld As Slide, minDate As Date, maxDate As Date, 
                 Left:=xPos + 2, Top:=topY - 25, width:=60, height:=20)
             With weekLabel.TextFrame2
                 .TextRange.Text = Format(currentDate, "dd-mmm")
-                .TextRange.Font.name = fontName
-                .TextRange.Font.size = 9
+                .TextRange.Font.name = config.fontName
+                .TextRange.Font.size = config.fontSize
                 .TextRange.Font.Bold = False ' Normal font weight instead of bold
                 .TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255) ' White text on colored background
                 .TextRange.ParagraphFormat.alignment = ppAlignLeft ' Left-aligned as requested
@@ -968,7 +889,7 @@ Sub DrawEnhancedTopTimelineAxis(sld As Slide, minDate As Date, maxDate As Date, 
     ' === Add Enhanced "Today" Marker with Triangle Arrow ===
     If todayX > 0 Then ' Only draw if today is within timeline range
         ' Position triangle so bottom touches bottom of red timeline bar (topY - 22 is bottom of red bar)
-        Call DrawTodayArrow(sld, todayX, topY - 22, fontName, RGB(220, 20, 60))
+        Call DrawTodayArrow(sld, todayX, topY - 22, config.fontName, RGB(220, 20, 60))
         
         ' Vertical red line removed per user request for cleaner appearance
     End If
@@ -988,10 +909,9 @@ Sub DrawTodayArrow(sld As Slide, x As Single, y As Single, fontName As String, a
     End With
     
     ' Add "Today" label ABOVE triangle (positioned above triangle top)
-    Dim triangleTop As Single: triangleTop = y - 7.5  ' Top of triangle (half height)
     Dim todayLabel As Shape
     Set todayLabel = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-        Left:=x - 20, Top:=triangleTop - 18, width:=40, height:=15)
+        Left:=x - 20, Top:=y - 25.5, width:=40, height:=15)
     With todayLabel.TextFrame2
         .TextRange.Text = "Today"
         .TextRange.Font.name = fontName
@@ -1005,19 +925,13 @@ Sub DrawTodayArrow(sld As Slide, x As Single, y As Single, fontName As String, a
     todayLabel.Line.Visible = msoFalse
 End Sub
 
-Sub DrawTopTimelineAxis(sld As Slide, minDate As Date, maxDate As Date, scaleFactor As Double, leftPadding As Single, topY As Single, fontName As String)
-    ' Legacy function - replaced by DrawEnhancedTopTimelineAxis
-    ' Keeping for backward compatibility
-    Call DrawEnhancedTopTimelineAxis(sld, minDate, maxDate, scaleFactor, leftPadding, topY, fontName)
-End Sub
-
 ' === Lane Assignment for Overlapping Events ===
-Function AssignLanesToEvents(milestoneData() As Variant, ByRef eventLanes() As Integer, _
-                            scaleFactor As Double, leftPadding As Single, minDate As Date) As Integer
+Function AssignLanesToEvents(timelineEvents() As Variant, ByRef eventLanes() As Integer, _
+                            dateRange As TimelineDateRange, config As TimelineConfig) As Integer
     ' Enhanced lane assignment with smart conflict resolution
     ' Events ending later (extending further right) are moved to higher lanes
     
-    Dim numEvents As Integer: numEvents = UBound(milestoneData) + 1
+    Dim numEvents As Integer: numEvents = UBound(timelineEvents) + 1
     Dim i As Integer, j As Integer
     Dim currentLanes As Integer: currentLanes = 0
     
@@ -1027,7 +941,7 @@ Function AssignLanesToEvents(milestoneData() As Variant, ByRef eventLanes() As I
     Next i
     
     ' Sort events by start date first for logical processing
-    Call SortEventsByStartDate(milestoneData, eventLanes)
+    Call SortEventsByStartDate(timelineEvents, eventLanes)
     
     ' Process each event to check for overlaps
     For i = 0 To numEvents - 1
@@ -1040,11 +954,11 @@ Function AssignLanesToEvents(milestoneData() As Variant, ByRef eventLanes() As I
             
             ' Check if this lane is available (no overlaps)
             For j = 0 To i - 1
-                If eventLanes(j) = assignedLane And EventsOverlap(milestoneData, i, j, scaleFactor, leftPadding, minDate) Then
+                If eventLanes(j) = assignedLane And EventsOverlap(timelineEvents, i, j, dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate) Then
                     ' Conflict detected - use CORRECTED logic
                     Dim currentEventEnd As Date, conflictEventEnd As Date
-                    currentEventEnd = GetEventEndDate(milestoneData, i)
-                    conflictEventEnd = GetEventEndDate(milestoneData, j)
+                    currentEventEnd = GetEventEndDate(timelineEvents, i)
+                    conflictEventEnd = GetEventEndDate(timelineEvents, j)
                     
                     ' FIXED: Event ending LATER gets moved to higher lane (further down)
                     If currentEventEnd > conflictEventEnd Then
@@ -1068,8 +982,8 @@ Function AssignLanesToEvents(milestoneData() As Variant, ByRef eventLanes() As I
     AssignLanesToEvents = currentLanes + 1 ' Return total number of lanes
 End Function
 
-Function EventsOverlap(milestoneData() As Variant, event1 As Integer, event2 As Integer, _
-                      scaleFactor As Double, leftPadding As Single, minDate As Date) As Boolean
+Function EventsOverlap(timelineEvents() As Variant, event1 As Integer, event2 As Integer, _
+                      scaleFactor As Double, headerWidth As Single, minDate As Date) As Boolean
     ' Enhanced overlap detection considering bars, labels, and date labels
     ' This ensures proper spacing for all visual elements of timeline events
     
@@ -1079,31 +993,31 @@ Function EventsOverlap(milestoneData() As Variant, event1 As Integer, event2 As 
     Dim label1 As String, label2 As String
     
     ' Get event details
-    start1 = Int(milestoneData(event1, 1))
-    start2 = Int(milestoneData(event2, 1))
-    type1 = CStr(milestoneData(event1, 3))
-    type2 = CStr(milestoneData(event2, 3))
-    label1 = CStr(milestoneData(event1, 0))
-    label2 = CStr(milestoneData(event2, 0))
+    start1 = Int(timelineEvents(event1, 1))
+    start2 = Int(timelineEvents(event2, 1))
+    type1 = CStr(timelineEvents(event1, 3))
+    type2 = CStr(timelineEvents(event2, 3))
+    label1 = CStr(timelineEvents(event1, 0))
+    label2 = CStr(timelineEvents(event2, 0))
     
     ' Get end dates
-    If IsDate(milestoneData(event1, 2)) Then
-        end1 = Int(milestoneData(event1, 2))
+    If IsDate(timelineEvents(event1, 2)) Then
+        end1 = Int(timelineEvents(event1, 2))
     Else
         end1 = start1 ' Milestone has same start and end
     End If
     
-    If IsDate(milestoneData(event2, 2)) Then
-        end2 = Int(milestoneData(event2, 2))
+    If IsDate(timelineEvents(event2, 2)) Then
+        end2 = Int(timelineEvents(event2, 2))
     Else
         end2 = start2 ' Milestone has same start and end
     End If
     
     ' Convert dates to base X positions
-    x1Start = leftPadding + (start1 - minDate) * scaleFactor
-    x1End = leftPadding + (end1 - minDate) * scaleFactor
-    x2Start = leftPadding + (start2 - minDate) * scaleFactor
-    x2End = leftPadding + (end2 - minDate) * scaleFactor
+    x1Start = headerWidth + (start1 - minDate) * scaleFactor
+    x1End = headerWidth + (end1 - minDate) * scaleFactor
+    x2Start = headerWidth + (start2 - minDate) * scaleFactor
+    x2End = headerWidth + (end2 - minDate) * scaleFactor
     
     ' === ENHANCED OVERLAP DETECTION WITH LABEL SPACE ===
     ' Calculate extended boundaries including all visual elements
@@ -1295,88 +1209,8 @@ Function CalculateDynamicLabelWidth(labelText As String, fontSize As Integer, mi
     CalculateDynamicLabelWidth = calculatedWidth
 End Function
 
-' --- Hierarchical Label System ---
-Sub AddLabel(sld As Slide, x As Single, y As Single, txt As String, fontName As String, fontSize As Integer, center As Boolean)
-    ' Generic label function for basic text placement
-    Dim shp As Shape
-    Set shp = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-        Left:=x - 50, Top:=y, width:=100, height:=40)
-    With shp.TextFrame2
-        .TextRange.Text = txt
-        .TextRange.Font.name = fontName
-        .TextRange.Font.size = fontSize
-        .TextRange.ParagraphFormat.alignment = IIf(center, ppAlignCenter, ppAlignLeft)
-    End With
-    shp.Fill.Visible = msoFalse
-    shp.Line.Visible = msoFalse
-End Sub
-
-Sub AddPhaseLabel(sld As Slide, x As Single, y As Single, txt As String, fontName As String, fontSize As Integer, center As Boolean)
-    ' Enhanced phase label for top-level hierarchy
-    Dim shp As Shape
-    Set shp = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-        Left:=x - 80, Top:=y, width:=160, height:=20)
-    With shp.TextFrame2
-        .TextRange.Text = txt
-        .TextRange.Font.name = fontName
-        .TextRange.Font.size = fontSize
-        .TextRange.Font.Bold = True
-        .TextRange.Font.Fill.ForeColor.RGB = RGB(30, 30, 30) ' Dark for hierarchy emphasis
-        .TextRange.ParagraphFormat.alignment = IIf(center, ppAlignCenter, ppAlignLeft)
-        .VerticalAnchor = msoAnchorMiddle
-        .MarginLeft = 5
-        .MarginRight = 5
-        .MarginTop = 2
-        .MarginBottom = 2
-    End With
-    shp.Fill.Visible = msoFalse
-    shp.Line.Visible = msoFalse
-End Sub
-
-Sub AddFeatureLabel(sld As Slide, x As Single, y As Single, txt As String, fontName As String, fontSize As Integer, center As Boolean)
-    ' Enhanced feature label for mid-level hierarchy
-    Dim shp As Shape
-    Set shp = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-        Left:=x - 60, Top:=y, width:=120, height:=18)
-    With shp.TextFrame2
-        .TextRange.Text = txt
-        .TextRange.Font.name = fontName
-        .TextRange.Font.size = fontSize
-        .TextRange.Font.Bold = True
-        .TextRange.Font.Fill.ForeColor.RGB = RGB(50, 50, 50) ' Dark gray for visibility
-        .TextRange.ParagraphFormat.alignment = IIf(center, ppAlignCenter, ppAlignLeft)
-        .VerticalAnchor = msoAnchorMiddle
-        .MarginLeft = 3
-        .MarginRight = 3
-        .MarginTop = 1
-        .MarginBottom = 1
-    End With
-    shp.Fill.Visible = msoFalse
-    shp.Line.Visible = msoFalse
-End Sub
-
-' --- Specialized Label Functions ---
-Sub AddBarLabel(sld As Slide, x As Single, y As Single, txt As String, fontName As String, fontSize As Integer, center As Boolean, textColor As Long)
-    ' Label inside bars with custom text color
-    Dim shp As Shape
-    Set shp = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-        Left:=x - 50, Top:=y - 8, width:=100, height:=16)
-    With shp.TextFrame2
-        .TextRange.Text = txt
-        .TextRange.Font.name = fontName
-        .TextRange.Font.size = fontSize
-        .TextRange.Font.Bold = True
-        .TextRange.Font.Fill.ForeColor.RGB = textColor
-        .TextRange.ParagraphFormat.alignment = IIf(center, ppAlignCenter, ppAlignLeft)
-        .VerticalAnchor = msoAnchorMiddle
-        .MarginLeft = 2
-        .MarginRight = 2
-        .MarginTop = 0
-        .MarginBottom = 0
-    End With
-    shp.Fill.Visible = msoFalse
-    shp.Line.Visible = msoFalse
-End Sub
+' --- CONSOLIDATED LABEL SYSTEM ---
+' Legacy label functions removed - use AddEventLabel for standardized labeling
 
 Sub AddDateLabel(sld As Slide, x As Single, y As Single, txt As String, fontName As String, fontSize As Integer)
     ' Subtle date label with consistent styling
@@ -1389,26 +1223,6 @@ Sub AddDateLabel(sld As Slide, x As Single, y As Single, txt As String, fontName
         .TextRange.Font.size = fontSize
         .TextRange.Font.Fill.ForeColor.RGB = RGB(100, 100, 100)
         .TextRange.ParagraphFormat.alignment = ppAlignLeft
-        .VerticalAnchor = msoAnchorMiddle
-        .MarginLeft = 2
-        .MarginRight = 2
-    End With
-    shp.Fill.Visible = msoFalse
-    shp.Line.Visible = msoFalse
-End Sub
-
-Sub AddCenteredDateLabel(sld As Slide, centerX As Single, y As Single, txt As String, fontName As String, fontSize As Integer)
-    ' Horizontally centered date label for phase duration text
-    Dim labelWidth As Single: labelWidth = 80
-    Dim shp As Shape
-    Set shp = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-        Left:=centerX - (labelWidth / 2), Top:=y, width:=labelWidth, height:=15)
-    With shp.TextFrame2
-        .TextRange.Text = txt
-        .TextRange.Font.name = fontName
-        .TextRange.Font.size = fontSize
-        .TextRange.Font.Fill.ForeColor.RGB = RGB(100, 100, 100)
-        .TextRange.ParagraphFormat.alignment = ppAlignCenter
         .VerticalAnchor = msoAnchorMiddle
         .MarginLeft = 2
         .MarginRight = 2
@@ -1441,91 +1255,8 @@ Sub AddPhaseBarLabel(sld As Slide, x As Single, y As Single, txt As String, font
     shp.ZOrder msoBringToFront
 End Sub
 
-Sub AddIntelligentFeatureLabel(sld As Slide, barStartX As Single, barEndX As Single, barY As Single, _
-                              txt As String, fontName As String, fontSize As Integer, _
-                              barWidth As Single, leftPadding As Single, scaleFactor As Double, minDate As Date)
-    ' Intelligent label positioning: inside bar if space allows, otherwise on appropriate side
-    
-    ' Get configuration values for consistent behavior
-    Dim config As TimelineConfig: config = GetDefaultTimelineConfig()
-    
-    Const SlideMiddle As Single = config.slideWidth / 2                  ' Middle of slide (960/2)
-    
-    Dim labelX As Single
-    Dim labelAlignment As Long
-    
-    ' Calculate actual label width based on text length
-    Dim labelWidth As Single: labelWidth = CalculateDynamicLabelWidth(txt, fontSize, config.featureNameLabelMinWidth, config.featureNameLabelMaxWidth)
-    
-    ' Add some padding for comfortable fit (20px buffer: 10px on each side)
-    Dim requiredWidth As Single: requiredWidth = labelWidth + config.labelInternalPadding
-    
-    ' Compare bar width with required width for label plus padding
-    If barWidth >= requiredWidth Then
-        ' === BAR IS WIDE ENOUGH: Place label INSIDE the bar ===
-        labelX = barStartX + (barWidth / 2) - (labelWidth / 2)
-        labelAlignment = ppAlignCenter
-        
-        ' Position label inside bar
-        Dim shp As Shape
-        Set shp = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-            Left:=labelX, Top:=barY - 8, width:=labelWidth, height:=16)
-        With shp.TextFrame2
-            .TextRange.Text = txt
-            .TextRange.Font.name = fontName
-            .TextRange.Font.size = fontSize
-            .TextRange.Font.Bold = True
-            .TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255) ' White text inside bar
-            .TextRange.ParagraphFormat.alignment = labelAlignment
-            .VerticalAnchor = msoAnchorMiddle
-            .MarginLeft = 2
-            .MarginRight = 2
-            .MarginTop = 0
-            .MarginBottom = 0
-        End With
-        shp.Fill.Visible = msoFalse
-        shp.Line.Visible = msoFalse
-        shp.ZOrder msoBringToFront ' Ensure text is on top of bar
-        
-    Else
-        ' === BAR IS TOO NARROW: Place label on appropriate SIDE ===
-        Dim barCenterX As Single: barCenterX = barStartX + (barWidth / 2)
-        
-        If barCenterX <= SlideMiddle Then
-            ' Bar is on LEFT side of slide -> Place label on RIGHT side of bar
-            labelX = barEndX + 5
-            labelAlignment = ppAlignLeft
-        Else
-            ' Bar is on RIGHT side of slide -> Place label on LEFT side of bar
-            labelX = barStartX - labelWidth - 5
-            labelAlignment = ppAlignRight
-        End If
-        
-        ' Position label vertically centered to the bar
-        Dim shp2 As Shape
-        Set shp2 = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
-            Left:=labelX, Top:=barY - 9, width:=labelWidth, height:=18)
-        With shp2.TextFrame2
-            .TextRange.Text = txt
-            .TextRange.Font.name = fontName
-            .TextRange.Font.size = fontSize
-            .TextRange.Font.Bold = True
-            .TextRange.Font.Fill.ForeColor.RGB = RGB(50, 50, 50) ' Dark gray for external labels
-            .TextRange.ParagraphFormat.alignment = labelAlignment
-            .VerticalAnchor = msoAnchorMiddle
-            .MarginLeft = 3
-            .MarginRight = 3
-            .MarginTop = 1
-            .MarginBottom = 1
-        End With
-        shp2.Fill.Visible = msoFalse
-        shp2.Line.Visible = msoFalse
-    End If
-End Sub
-
-Sub AddIntelligentMilestoneLabel(sld As Slide, milestoneStartX As Single, milestoneEndX As Single, milestoneY As Single, _
-                                txt As String, fontName As String, fontSize As Integer, _
-                                milestoneWidth As Single, leftPadding As Single, scaleFactor As Double, minDate As Date)
+Sub AddIntelligentMilestoneLabel(sld As Slide, milestoneX As Single, milestoneY As Single, txt As String, _
+                                fontName As String, fontSize As Integer, leftPadding As Single)
     ' Intelligent milestone label positioning with priority for LEFT side placement
     ' NEW RULES:
     ' 1. Always prefer LEFT side of milestone marker
@@ -1538,14 +1269,9 @@ Sub AddIntelligentMilestoneLabel(sld As Slide, milestoneStartX As Single, milest
     ' DYNAMIC WIDTH: Calculate label width based on actual text length using config constraints
     Dim labelWidth As Single: labelWidth = CalculateDynamicLabelWidth(txt, fontSize, config.milestoneLabelMinWidth, config.milestoneLabelMaxWidth)
     
-    ' Convert integer config values to Singles to avoid ByRef type mismatch
-    Dim labelVerticalOffsetSingle As Single: labelVerticalOffsetSingle = CSng(config.labelVerticalOffset)
-    Dim labelHeightSingle As Single: labelHeightSingle = CSng(config.labelHeight)
-    Dim labelSpacingToShapeSingle As Single: labelSpacingToShapeSingle = CSng(config.labelSpacingToShape)
-    
     ' Calculate space available on the left side of milestone
     Dim diamondHalfSize As Single: diamondHalfSize = 8 ' Half of 16px diamond
-    Dim availableLeftSpace As Single: availableLeftSpace = milestoneStartX - leftPadding
+    Dim availableLeftSpace As Single: availableLeftSpace = milestoneX - leftPadding
     
     ' EXTREMELY CLOSE SPACING: Bring milestone markers extremely close to their labels
     Dim closeLabelSpacing As Single: closeLabelSpacing = 0.5 ' Reduced to 2px for extremely close positioning
@@ -1557,20 +1283,20 @@ Sub AddIntelligentMilestoneLabel(sld As Slide, milestoneStartX As Single, milest
     If availableLeftSpace >= requiredLeftSpace Then
         ' === SUFFICIENT SPACE ON LEFT: Place label on LEFT side of milestone ===
         ' Apply 5px left shift for better visual spacing
-        labelX = milestoneStartX - diamondHalfSize - closeLabelSpacing - labelWidth - 5
-        labelY = milestoneY + labelVerticalOffsetSingle ' Vertically centered to milestone
+        labelX = milestoneX - diamondHalfSize - closeLabelSpacing - labelWidth - 5
+        labelY = milestoneY + CSng(config.labelVerticalOffset) ' Vertically centered to milestone
         
         ' Use shared label function for LEFT positioning with RIGHT alignment
-        Call AddEventLabel(sld, labelX, labelY, labelWidth, labelHeightSingle, _
+        Call AddEventLabel(sld, labelX, labelY, labelWidth, CSng(config.labelHeight), _
                           txt, fontName, fontSize, ppAlignRight, RGB(50, 50, 50), True)
                           
     Else
         ' === INSUFFICIENT SPACE ON LEFT: Place label ON TOP of milestone ===
-        labelX = milestoneStartX ' Left edge of label aligns with milestone center
-        labelY = milestoneY - diamondHalfSize - closeLabelSpacing - labelHeightSingle ' Above milestone with closer spacing
+        labelX = milestoneX ' Left edge of label aligns with milestone center
+        labelY = milestoneY - diamondHalfSize - closeLabelSpacing - CSng(config.labelHeight) ' Above milestone with closer spacing
         
         ' Use shared label function for TOP positioning with LEFT alignment
-        Call AddEventLabel(sld, labelX, labelY, labelWidth, labelHeightSingle, _
+        Call AddEventLabel(sld, labelX, labelY, labelWidth, CSng(config.labelHeight), _
                           txt, fontName, fontSize, ppAlignLeft, RGB(50, 50, 50), True)
     End If
 End Sub
@@ -1789,22 +1515,20 @@ Function GetColor(name As String) As Long
     ' Enhanced color mapping with phase-specific target colors
     Select Case LCase(name)
         ' === Target Format Phase Colors ===
-        Case "mapping", "green": GetColor = RGB(118, 203, 127)  ' Green for mapping phase
-        Case "test", "testing", "gray", "grey": GetColor = RGB(160, 160, 160)  ' Gray for testing phase
-        Case "rollout", "deployment", "blue": GetColor = RGB(68, 114, 196)     ' Blue for rollout phase
-        
-        ' === Standard Colors ===
-        Case "red": GetColor = RGB(220, 20, 60)       ' Crimson red
-        Case "orange": GetColor = RGB(255, 153, 0)    ' Vibrant orange
-        Case "purple": GetColor = RGB(112, 48, 160)   ' Deep purple
-        Case "yellow": GetColor = RGB(255, 192, 0)    ' Golden yellow
+        Case "blue": GetColor = RGB(68, 114, 196)               ' Blue
+        Case "brown": GetColor = RGB(165, 42, 42)
+        Case "darkgreen": GetColor = RGB(0, 100, 0)
+        Case "gray", "grey": GetColor = RGB(160, 160, 160)      ' Grey
+        Case "green": GetColor = RGB(118, 203, 127)             ' Green
         Case "lightblue": GetColor = RGB(173, 216, 230)
         Case "lightgreen": GetColor = RGB(144, 238, 144)
-        Case "pink": GetColor = RGB(255, 182, 193)
-        Case "brown": GetColor = RGB(165, 42, 42)
         Case "navy": GetColor = RGB(25, 25, 112)
+        Case "orange": GetColor = RGB(255, 153, 0)              ' Vibrant orange
+        Case "pink": GetColor = RGB(255, 182, 193)
+        Case "purple": GetColor = RGB(112, 48, 160)             ' Deep purple
+        Case "red": GetColor = RGB(220, 20, 60)                 ' Crimson red
         Case "teal": GetColor = RGB(0, 128, 128)
-        Case "darkgreen": GetColor = RGB(0, 100, 0)
+        Case "yellow": GetColor = RGB(255, 192, 0)              ' Golden yellow
         
         ' === Auto-detect phase type from task name ===
         Case Else:
@@ -1812,7 +1536,7 @@ Function GetColor(name As String) As Long
             If InStr(LCase(name), "map") > 0 Or InStr(LCase(name), "discover") > 0 Then
                 GetColor = RGB(118, 203, 127) ' Green for mapping/discovery
             ElseIf InStr(LCase(name), "test") > 0 Or InStr(LCase(name), "qa") > 0 Then
-                GetColor = RGB(160, 160, 160) ' Gray for testing
+                GetColor = RGB(160, 160, 160) ' Grey for testing
             ElseIf InStr(LCase(name), "rollout") > 0 Or InStr(LCase(name), "deploy") > 0 Or InStr(LCase(name), "build") > 0 Then
                 GetColor = RGB(68, 114, 196) ' Blue for rollout/deployment
             Else
@@ -1946,29 +1670,29 @@ Sub AddDateMarkers(sld As Slide, minDate As Date, maxDate As Date, scaleFactor A
 End Sub
 
 ' === Enhanced Error Handling Function ===
-Function ValidateTimelineData(milestoneData() As Variant) As Boolean
+Function ValidateTimelineData(timelineEvents() As Variant) As Boolean
     ' Validate the timeline data for common issues
     Dim i As Integer
     Dim errorMessages As String
     
-    For i = 0 To UBound(milestoneData)
+    For i = 0 To UBound(timelineEvents)
         ' Check for missing task name
-        If IsEmpty(milestoneData(i, 0)) Or Trim(CStr(milestoneData(i, 0))) = "" Then
+        If IsEmpty(timelineEvents(i, 0)) Or Trim(CStr(timelineEvents(i, 0))) = "" Then
             errorMessages = errorMessages & "Row " & (i + 2) & ": Missing task name" & vbCrLf
         End If
         
         ' Check for invalid start date
-        If Not IsDate(milestoneData(i, 1)) Then
+        If Not IsDate(timelineEvents(i, 1)) Then
             errorMessages = errorMessages & "Row " & (i + 2) & ": Invalid start date" & vbCrLf
         End If
         
         ' Check for invalid type
-        If Not (UCase(milestoneData(i, 3)) = "MILESTONE" Or UCase(milestoneData(i, 3)) = "FEATURE" Or UCase(milestoneData(i, 3)) = "PHASE") Then
+        If Not (UCase(timelineEvents(i, 3)) = "MILESTONE" Or UCase(timelineEvents(i, 3)) = "FEATURE" Or UCase(timelineEvents(i, 3)) = "PHASE") Then
             errorMessages = errorMessages & "Row " & (i + 2) & ": Type must be 'Milestone', 'Feature', or 'Phase'" & vbCrLf
         End If
         
         ' Check for features and phases without end dates
-        If (UCase(milestoneData(i, 3)) = "FEATURE" Or UCase(milestoneData(i, 3)) = "PHASE") And Not IsDate(milestoneData(i, 2)) Then
+        If (UCase(timelineEvents(i, 3)) = "FEATURE" Or UCase(timelineEvents(i, 3)) = "PHASE") And Not IsDate(timelineEvents(i, 2)) Then
             errorMessages = errorMessages & "Row " & (i + 2) & ": Feature and Phase events require an end date" & vbCrLf
         End If
     Next i
@@ -2008,21 +1732,21 @@ End Sub
 ' ENHANCED LANE ASSIGNMENT HELPER FUNCTIONS
 ' ===================================================================
 
-Sub SortEventsByStartDate(ByRef milestoneData() As Variant, ByRef eventLanes() As Integer)
+Sub SortEventsByStartDate(ByRef timelineEvents() As Variant, ByRef eventLanes() As Integer)
     ' Sort events by start date for logical lane assignment processing
     Dim i As Integer, j As Integer
-    Dim numEvents As Integer: numEvents = UBound(milestoneData) + 1
+    Dim numEvents As Integer: numEvents = UBound(timelineEvents) + 1
     
     ' Simple bubble sort by start date
     For i = 0 To numEvents - 2
         For j = i + 1 To numEvents - 1
             Dim startDate1 As Date, startDate2 As Date
-            startDate1 = CDate(milestoneData(i, 1))
-            startDate2 = CDate(milestoneData(j, 1))
+            startDate1 = CDate(timelineEvents(i, 1))
+            startDate2 = CDate(timelineEvents(j, 1))
             
             If startDate1 > startDate2 Then
                 ' Swap events
-                Call SwapEvents(milestoneData, i, j)
+                Call SwapEvents(timelineEvents, i, j)
                 ' Reset lane assignments since we changed order
                 eventLanes(i) = 0
                 eventLanes(j) = 0
@@ -2031,24 +1755,24 @@ Sub SortEventsByStartDate(ByRef milestoneData() As Variant, ByRef eventLanes() A
     Next i
 End Sub
 
-Sub SwapEvents(ByRef milestoneData() As Variant, index1 As Integer, index2 As Integer)
-    ' Swap two events in the milestone data array
+Sub SwapEvents(ByRef timelineEvents() As Variant, index1 As Integer, index2 As Integer)
+    ' Swap two events in the timeline data array
     Dim temp As Variant
     Dim col As Integer
     
     For col = 0 To 5
-        temp = milestoneData(index1, col)
-        milestoneData(index1, col) = milestoneData(index2, col)
-        milestoneData(index2, col) = temp
+        temp = timelineEvents(index1, col)
+        timelineEvents(index1, col) = timelineEvents(index2, col)
+        timelineEvents(index2, col) = temp
     Next col
 End Sub
 
-Function GetEventEndDate(milestoneData() As Variant, eventIndex As Integer) As Date
+Function GetEventEndDate(timelineEvents() As Variant, eventIndex As Integer) As Date
     ' Get the end date for an event (start date for milestones)
-    If IsDate(milestoneData(eventIndex, 2)) Then
-        GetEventEndDate = CDate(milestoneData(eventIndex, 2))
+    If IsDate(timelineEvents(eventIndex, 2)) Then
+        GetEventEndDate = CDate(timelineEvents(eventIndex, 2))
     Else
-        GetEventEndDate = CDate(milestoneData(eventIndex, 1)) ' Milestone uses start date
+        GetEventEndDate = CDate(timelineEvents(eventIndex, 1)) ' Milestone uses start date
     End If
 End Function
 
@@ -2179,8 +1903,57 @@ Sub CalculateEventExtendedBounds(baseStartX As Single, baseEndX As Single, event
 End Sub
 
 ' ===================================================================
+' LABEL POSITIONING DETECTION UTILITIES
+' ===================================================================
+
+Function DetermineFeatureLabelPosition(taskName As String, startDate As Date, endDate As Date, scaleFactor As Double, config As TimelineConfig) As Boolean
+    ' Centralized function to determine if feature label should be positioned on top
+    ' Returns True if label should be on top, False if label should be inside bar
+    ' Replaces duplicate feature label detection logic
+    
+    Dim startDateCheck As Date: startDateCheck = Int(startDate)
+    Dim endDateCheck As Date: endDateCheck = Int(endDate)
+    Dim barWidthCheck As Single: barWidthCheck = Abs(endDateCheck - startDateCheck) * scaleFactor
+    
+    ' Calculate required width based on label text length
+    Dim labelWidth As Single: labelWidth = CalculateDynamicLabelWidth(taskName, config.fontSize, config.featureNameLabelMinWidth, config.featureNameLabelMaxWidth)
+    Dim requiredWidth As Single: requiredWidth = labelWidth + config.labelInternalPadding
+    
+    ' Return True if bar is too narrow for label (label goes on top)
+    DetermineFeatureLabelPosition = (barWidthCheck < requiredWidth)
+End Function
+
+Function DetermineMilestoneLabelPosition(taskName As String, startDate As Date, scaleFactor As Double, leftPadding As Single, minDate As Date, config As TimelineConfig) As Boolean
+    ' Centralized function to determine if milestone label should be positioned on top
+    ' Returns True if label should be on top, False if label should be on left
+    ' Replaces duplicate milestone label detection logic
+    
+    Dim milestoneStartXCheck As Single: milestoneStartXCheck = leftPadding + (Int(startDate) - minDate) * scaleFactor
+    Dim availableLeftSpaceCheck As Single: availableLeftSpaceCheck = milestoneStartXCheck - leftPadding
+    Dim estimatedLabelWidthCheck As Single: estimatedLabelWidthCheck = (Len(taskName) * 6) + 20
+    Dim requiredLeftSpaceCheck As Single: requiredLeftSpaceCheck = estimatedLabelWidthCheck + 23 + 8
+    
+    ' Return True if insufficient left space (label goes on top)
+    DetermineMilestoneLabelPosition = (availableLeftSpaceCheck < requiredLeftSpaceCheck)
+End Function
+
+' ===================================================================
 ' SWIMLANE DYNAMIC HEIGHT CALCULATION
 ' ===================================================================
+
+Function CalculateDynamicSwimlaneHeight(requiredLanes As Integer, laneHeight As Integer, baseSwimlaneHeight As Integer) As Single
+    ' Centralized function for calculating swimlane height based on required lanes
+    ' Replaces duplicate calculation logic throughout the codebase
+    ' Formula: (requiredLanes * laneHeight), with minimum height constraint
+    
+    Dim calculatedHeight As Single
+    calculatedHeight = (requiredLanes * laneHeight)
+    
+    ' Apply minimum height constraint
+    If calculatedHeight < baseSwimlaneHeight Then calculatedHeight = baseSwimlaneHeight
+    
+    CalculateDynamicSwimlaneHeight = calculatedHeight
+End Function
 
 Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() As Integer, config As TimelineConfig, _
                                       scaleFactor As Double, leftPadding As Single, minDate As Date) As Single
@@ -2194,7 +1967,11 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
     
     ' Perform lane assignment to determine actual positioning
     Dim totalLanes As Integer
-    totalLanes = AssignLanesToEvents(events, eventLanes, scaleFactor, leftPadding, minDate)
+    Dim tempDateRange As TimelineDateRange
+    tempDateRange.scaleFactor = scaleFactor
+    tempDateRange.minDate = minDate
+    Dim tempConfig As TimelineConfig: tempConfig = GetDefaultTimelineConfig()
+    totalLanes = AssignLanesToEvents(events, eventLanes, tempDateRange, tempConfig)
     
     ' Find maximum lane number to size arrays properly
     Dim maxLane As Integer: maxLane = 0
@@ -2207,31 +1984,17 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
     Dim lanesWithTopLabels() As Boolean
     ReDim lanesWithTopLabels(0 To maxLane)
     
-    For i = 0 To UBound(events)
+    For i = 0 To UBound(events)        
         If UCase(events(i, 3)) = "FEATURE" And IsDate(events(i, 2)) Then
-            Dim startDateCheck As Date: startDateCheck = Int(events(i, 1))
-            Dim endDateCheck As Date: endDateCheck = Int(events(i, 2))
-            Dim barWidthCheck As Single: barWidthCheck = Abs(endDateCheck - startDateCheck) * scaleFactor
-            
-            ' Calculate required width based on label text length
-            Dim labelText As String: labelText = CStr(events(i, 0)) ' Task name is in column A (index 0)
-            Dim labelWidth As Single: labelWidth = CalculateDynamicLabelWidth(labelText, config.fontSize, 30, 300) ' Min 30, Max 300
-            Dim requiredWidth As Single: requiredWidth = labelWidth + config.labelInternalPadding ' Add 20px padding (10px each side)
-            
-            ' Compare bar width with required space for label
-            If barWidthCheck < requiredWidth Then
+            ' Use centralized function to determine label position
+            If DetermineFeatureLabelPosition(CStr(events(i, 0)), CDate(events(i, 1)), CDate(events(i, 2)), scaleFactor, config) Then
                 If eventLanes(i) <= maxLane Then
                     lanesWithTopLabels(eventLanes(i)) = True
                 End If
-            End If
-        ElseIf UCase(events(i, 3)) = "MILESTONE" Then
-            ' Check if milestone will have label on top (insufficient left space)
-            Dim milestoneStartXCheck As Single: milestoneStartXCheck = leftPadding + (Int(events(i, 1)) - minDate) * scaleFactor
-            Dim availableLeftSpaceCheck As Single: availableLeftSpaceCheck = milestoneStartXCheck - leftPadding
-            Dim estimatedLabelWidthCheck As Single: estimatedLabelWidthCheck = (Len(CStr(events(i, 0))) * 6) + 20
-            Dim requiredLeftSpaceCheck As Single: requiredLeftSpaceCheck = estimatedLabelWidthCheck + 23 + 8
-            
-            If availableLeftSpaceCheck < requiredLeftSpaceCheck Then
+            End If        
+            ElseIf UCase(events(i, 3)) = "MILESTONE" Then
+            ' Use centralized function to determine label position
+            If DetermineMilestoneLabelPosition(CStr(events(i, 0)), CDate(events(i, 1)), scaleFactor, leftPadding, minDate, config) Then
                 If eventLanes(i) <= maxLane Then
                     lanesWithTopLabels(eventLanes(i)) = True
                 End If
@@ -2278,18 +2041,13 @@ Function CalculateSwimlaneRequiredLanes(events() As Variant, ByRef eventLanes() 
     ' This maintains compatibility with existing code while using the new height-based calculation
     
     If IsEmpty(events) Then
-        CalculateSwimlaneRequiredLanes = 1 ' Minimum lanes for empty swimlane
+        CalculateSwimlaneRequiredLanes = 0 ' Minimum lanes for empty swimlane
         Exit Function
     End If
     
-    ' Extract config values
-    Dim scaleFactor As Double: scaleFactor = 1 ' Placeholder - will be set by calling function
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim minDate As Date: minDate = Date ' Placeholder - will be set by calling function
-    
     ' Calculate actual height needed
     Dim actualHeight As Single
-    actualHeight = CalculateSwimlaneActualHeight(events, eventLanes, config, scaleFactor, headerWidth, minDate)
+    actualHeight = CalculateSwimlaneActualHeight(events, eventLanes, config, 1, config.swimlaneHeaderWidth, Date)
     
     ' Convert to equivalent lanes for compatibility (minimum 1)
     Dim equivalentLanes As Integer
@@ -2310,12 +2068,12 @@ Function CalculateRequiredSlides(swimlaneOrg As SwimlaneOrganization, config As 
     Dim currentY As Single
     
     ' Calculate available height for swimlane content (excluding calendar and phase areas)
-    availableHeight = config.slideHeight - config.timelineTop - 30 ' 30px bottom margin
+    availableHeight = config.slideHeight - config.timelineAxisY - config.bottomMarginForSlides ' Bottom margin
     
     ' Calculate total height needed for all swimlanes
     totalRequiredHeight = 0
-    currentY = config.axisY
-    Const SwimlonePadding As Single = 5
+    currentY = config.swimlaneStartY
+    Const swimlanePadding As Single = 5
     
     Dim i As Integer
     For i = 0 To swimlaneOrg.Count - 1
@@ -2326,22 +2084,17 @@ Function CalculateRequiredSlides(swimlaneOrg As SwimlaneOrganization, config As 
             Dim tempEventLanes() As Integer
             ReDim tempEventLanes(0 To UBound(tempEvents))
             
-            ' Extract values to avoid ByRef issues with UDT members
-            Dim placeholderScaleFactor2 As Double: placeholderScaleFactor2 = 1
-            Dim headerWidth2 As Single: headerWidth2 = config.SwimlaneHeaderWidth
-            Dim placeholderMinDate2 As Date: placeholderMinDate2 = Date
-            
             ' Use the new content-based height calculation
             swimlaneHeight = CalculateSwimlaneActualHeight(tempEvents, tempEventLanes, config, _
-                placeholderScaleFactor2, headerWidth2, placeholderMinDate2)
+                1, config.swimlaneHeaderWidth, Date)
         Else
-            swimlaneHeight = 50 ' Minimum height for empty swimlane
+            swimlaneHeight = config.swimlaneEmptyHeight ' Minimum height for empty swimlane (0)
         End If
         
         ' Ensure minimum height
         If swimlaneHeight < config.swimlaneHeight Then swimlaneHeight = config.swimlaneHeight
         
-        totalRequiredHeight = totalRequiredHeight + swimlaneHeight + SwimlonePadding
+        totalRequiredHeight = totalRequiredHeight + swimlaneHeight + swimlanePadding
     Next i
     
     ' Calculate number of slides needed
@@ -2357,12 +2110,12 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
     ' Create multiple slides with distributed swimlanes, duplicating calendar and phase sections on each slide
     
     Dim availableHeight As Single
-    availableHeight = config.slideHeight - config.timelineTop - 30 ' Available height per slide
+    availableHeight = config.slideHeight - config.timelineAxisY - config.bottomMarginForSlides ' Available height per slide
     
     ' Calculate swimlane heights for distribution
     Dim swimlaneHeights() As Single
     ReDim swimlaneHeights(0 To swimlaneOrg.Count - 1)
-    Const SwimlonePadding As Single = 5
+    Const swimlanePadding As Single = 5
     
     Dim i As Integer
     For i = 0 To swimlaneOrg.Count - 1
@@ -2373,9 +2126,7 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
             ReDim tempEventLanes(0 To UBound(tempEvents))
             requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
         End If
-        
-        swimlaneHeights(i) = (requiredLanes * config.laneHeight) + 40
-        If swimlaneHeights(i) < config.swimlaneHeight Then swimlaneHeights(i) = config.swimlaneHeight
+        swimlaneHeights(i) = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
     Next i
     
     ' Distribute swimlanes across slides
@@ -2386,7 +2137,7 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
     
     For i = 0 To swimlaneOrg.Count - 1
         ' Check if current swimlane fits on current slide
-        If currentSlideHeight + swimlaneHeights(i) + SwimlonePadding > availableHeight And i > swimlaneStartIndex Then
+        If currentSlideHeight + swimlaneHeights(i) + swimlanePadding > availableHeight And i > swimlaneStartIndex Then
             ' Create slide for current batch of swimlanes
             Call CreateSingleSlideWithSwimlanes(config, dateRange, swimlaneOrg, timelineData, _
                 swimlaneStartIndex, i - 1, currentSlide)
@@ -2395,10 +2146,10 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
             ' Start new slide
             currentSlide = currentSlide + 1
             swimlaneStartIndex = i
-            currentSlideHeight = swimlaneHeights(i) + SwimlonePadding
+            currentSlideHeight = swimlaneHeights(i) + swimlanePadding
         Else
             ' Add to current slide
-            currentSlideHeight = currentSlideHeight + swimlaneHeights(i) + SwimlonePadding
+            currentSlideHeight = currentSlideHeight + swimlaneHeights(i) + swimlanePadding
         End If
     Next i
     
@@ -2423,19 +2174,11 @@ Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As Timeli
     Set sld = CreateTimelineSlide()
     
     ' Calculate scale factor
-    dateRange.scaleFactor = (config.slideWidth - config.SwimlaneHeaderWidth - config.axisPadding) / _
+    dateRange.scaleFactor = (config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding) / _
                            (dateRange.maxDate - dateRange.minDate)
     
-    ' Store values in local variables
-    Dim minDate As Date: minDate = dateRange.minDate
-    Dim maxDate As Date: maxDate = dateRange.maxDate
-    Dim scaleFactor As Double: scaleFactor = dateRange.scaleFactor
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim timelineTop As Single: timelineTop = config.TimelineAxisTop
-    Dim fontName As String: fontName = config.fontName
-    
     ' === DUPLICATE CALENDAR SECTION ===
-    Call DrawEnhancedTopTimelineAxis(sld, minDate, maxDate, scaleFactor, headerWidth, timelineTop, fontName)
+    Call DrawEnhancedTopTimelineAxis(sld, dateRange, config)
     
     ' === DUPLICATE PHASES SECTION ===
     Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)
@@ -2446,7 +2189,7 @@ Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As Timeli
     
     ' Add slide number indicator if multiple slides
     If slideNumber > 1 Then
-        Call AddSlideNumberIndicator(sld, slideNumber, fontName)
+        Call AddSlideNumberIndicator(sld, slideNumber, config.fontName)
     End If
 End Sub
 
@@ -2454,16 +2197,8 @@ Sub RenderSwimlaneSubset(sld As Slide, config As TimelineConfig, swimlaneOrg As 
                         startIndex As Integer, endIndex As Integer)
     ' Render swimlane headers and backgrounds for a subset of swimlanes
     
-    Dim axisY As Single: axisY = config.axisY
-    Dim baseSwimlaneHeight As Integer: baseSwimlaneHeight = config.swimlaneHeight
-    Dim fontName As String: fontName = config.fontName
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim slideWidth As Single: slideWidth = config.slideWidth
-    Dim axisPadding As Integer: axisPadding = config.axisPadding
-    Dim laneHeight As Integer: laneHeight = config.laneHeight
-    
-    Dim currentY As Single: currentY = axisY
-    Const SwimlonePadding As Single = 5
+    Dim currentY As Single: currentY = config.swimlaneStartY
+    Const swimlanePadding As Single = 5
     
     Dim i As Integer
     For i = startIndex To endIndex
@@ -2478,19 +2213,18 @@ Sub RenderSwimlaneSubset(sld As Slide, config As TimelineConfig, swimlaneOrg As 
         
         ' Calculate dynamic height for this swimlane
         Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = (requiredLanes * laneHeight) + 40
-        If dynamicSwimlaneHeight < baseSwimlaneHeight Then dynamicSwimlaneHeight = baseSwimlaneHeight
+        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
         
         ' Enhanced swimlane header with matching height and vertical centering
         Call AddEnhancedSwimlaneHeader(sld, 10, currentY - 1.5, _
-            swimlaneOrg.swimlanes(i), fontName, 11, dynamicSwimlaneHeight)
+            swimlaneOrg.swimlanes(i), config.fontName, 11, dynamicSwimlaneHeight)
         
         ' Dynamic background size based on actual content - EXTENDED BY 25PX LEFT AND RIGHT
-        Call DrawSwimlaneBackground(sld, headerWidth - 25, currentY, _
-            slideWidth - headerWidth - axisPadding + 50, dynamicSwimlaneHeight, i - startIndex)
+        Call DrawSwimlaneBackground(sld, config.swimlaneHeaderWidth - 25, currentY, _
+            config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding + 50, dynamicSwimlaneHeight)
         
         ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + SwimlonePadding
+        currentY = currentY + dynamicSwimlaneHeight + swimlanePadding
     Next i
 End Sub
 
@@ -2498,18 +2232,8 @@ Sub RenderSwimlaneEventsSubset(sld As Slide, config As TimelineConfig, dateRange
                               swimlaneOrg As SwimlaneOrganization, startIndex As Integer, endIndex As Integer)
     ' Render events for a subset of swimlanes
     
-    Dim scaleFactor As Double: scaleFactor = dateRange.scaleFactor
-    Dim minDate As Date: minDate = dateRange.minDate
-    Dim headerWidth As Single: headerWidth = config.SwimlaneHeaderWidth
-    Dim fontName As String: fontName = config.fontName
-    Dim circleSize As Integer: circleSize = config.circleSize
-    Dim elementHeight As Integer: elementHeight = config.elementHeight
-    Dim laneHeight As Integer: laneHeight = config.laneHeight
-    Dim axisY As Single: axisY = config.axisY
-    Dim baseSwimlaneHeight As Integer: baseSwimlaneHeight = config.swimlaneHeight
-    
-    Dim currentY As Single: currentY = axisY
-    Const SwimlonePadding As Single = 5
+    Dim currentY As Single: currentY = config.swimlaneStartY
+    Const swimlanePadding As Single = 5
     
     Dim i As Integer
     For i = startIndex To endIndex
@@ -2520,11 +2244,11 @@ Sub RenderSwimlaneEventsSubset(sld As Slide, config As TimelineConfig, dateRange
             Dim eventLanes() As Integer
             ReDim eventLanes(0 To UBound(currentEvents))
             Dim totalLanes As Integer
-            totalLanes = AssignLanesToEvents(currentEvents, eventLanes, scaleFactor, headerWidth, minDate)
+            totalLanes = AssignLanesToEvents(currentEvents, eventLanes, dateRange, config)
             
             ' Place events with enhanced styling using dynamic Y position
             Call PlaceEventsInSwimlane(sld, currentEvents, eventLanes, currentY, _
-                scaleFactor, headerWidth, minDate, fontName, circleSize, elementHeight, laneHeight)
+                dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate, config.fontName, config.circleSize, config.elementHeight, config.laneHeight)
         End If
         
         ' Calculate dynamic height for this swimlane to get next position
@@ -2534,11 +2258,10 @@ Sub RenderSwimlaneEventsSubset(sld As Slide, config As TimelineConfig, dateRange
         End If
         
         Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = (requiredLanes * laneHeight) + 40
-        If dynamicSwimlaneHeight < baseSwimlaneHeight Then dynamicSwimlaneHeight = baseSwimlaneHeight
+        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
         
         ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + SwimlonePadding
+        currentY = currentY + dynamicSwimlaneHeight + swimlanePadding
     Next i
 End Sub
 
