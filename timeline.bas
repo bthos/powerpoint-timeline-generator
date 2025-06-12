@@ -92,6 +92,14 @@ Type SwimlaneOrganization
 End Type
 
 ' ===================================================================
+' DEBUG CONFIGURATION FOR LANE CALCULATIONS
+' ===================================================================
+' Debug logging system for troubleshooting lane calculation logic
+' Set DEBUG = True to enable comprehensive lane debugging
+
+Public Const DEBUG_LOG As Boolean = False  ' Set to True to enable debug logging
+
+' ===================================================================
 ' GLOBAL TIMELINE CONFIGURATION OBJECT
 ' ===================================================================
 ' Single source of truth for all timeline configuration values
@@ -165,6 +173,85 @@ Sub InitializeGlobalConfig()
     End With
 End Sub
 
+Function GetColor(name As String) As Long
+    ' Enhanced color mapping with phase-specific target colors
+    Select Case LCase(name)
+        ' === Target Format Phase Colors ===
+        Case "blue": GetColor = RGB(68, 114, 196)               ' Blue
+        Case "brown": GetColor = RGB(165, 42, 42)
+        Case "darkgreen": GetColor = RGB(0, 100, 0)
+        Case "gray", "grey": GetColor = RGB(160, 160, 160)      ' Grey
+        Case "green": GetColor = RGB(118, 203, 127)             ' Green
+        Case "lightblue": GetColor = RGB(173, 216, 230)
+        Case "lightgreen": GetColor = RGB(144, 238, 144)
+        Case "navy": GetColor = RGB(25, 25, 112)
+        Case "orange": GetColor = RGB(255, 153, 0)              ' Vibrant orange
+        Case "pink": GetColor = RGB(255, 182, 193)
+        Case "purple": GetColor = RGB(112, 48, 160)             ' Deep purple
+        Case "red": GetColor = RGB(220, 20, 60)                 ' Crimson red
+        Case "teal": GetColor = RGB(0, 128, 128)
+        Case "yellow": GetColor = RGB(255, 192, 0)              ' Golden yellow        
+    End Select
+End Function
+
+Function GetColorFromTaskName(taskName As String, colorName As String) As Long
+    ' Smart color detection combining explicit color and task name analysis
+    
+    ' First, try to get color from explicit color column
+    If Trim(colorName) <> "" And LCase(Trim(colorName)) <> "default" Then
+        GetColorFromTaskName = GetColor(colorName)
+        Exit Function
+    End If
+    
+    ' If no explicit color, analyze task name for phase type
+    Dim lowerTaskName As String: lowerTaskName = LCase(taskName)
+    
+    ' === Auto-detect type from task name ===
+    ' Smart color detection based on task name content
+    If InStr(lowerTaskName, "discover") > 0 Or InStr(lowerTaskName, "map") > 0 Or InStr(lowerTaskName, "analysis") > 0 Then
+        GetColorFromTaskName = RGB(118, 203, 127) ' Green for discovery/mapping
+    ElseIf InStr(lowerTaskName, "test") > 0 Or InStr(lowerTaskName, "qa") > 0 Or InStr(lowerTaskName, "validation") > 0 Then
+        GetColorFromTaskName = RGB(160, 160, 160) ' Gray for testing
+    ElseIf InStr(lowerTaskName, "build") > 0 Or InStr(lowerTaskName, "rollout") > 0 Or InStr(lowerTaskName, "deploy") > 0 Or InStr(lowerTaskName, "production") > 0 Then
+        GetColorFromTaskName = RGB(68, 114, 196) ' Blue for build/rollout
+    Else
+        ' Default color based on position or swimlane context
+        GetColorFromTaskName = RGB(68, 114, 196) ' Professional blue default
+    End If
+
+End Function
+
+' ===================================================================
+' DEBUG LOGGING UTILITIES
+' ===================================================================
+Sub DebugLog(message As String, Optional level As String = "INFO")
+    ' Comprehensive debug logging
+    ' Outputs timestamped messages to Immediate Window when DEBUG is enabled
+    '
+    ' Parameters:
+    '   message - Debug message to log
+    '   level   - Log level: "INFO", "WARNING", "ERROR", "DETAIL"
+    
+    If DEBUG_LOG Then
+        Dim timestamp As String
+        timestamp = Format(Now, "dd-mmm-yyyy hh:mm:ss.000")
+        
+        Dim logPrefix As String
+        Select Case UCase(level)
+            Case "ERROR"
+                logPrefix = "[ERROR]  "
+            Case "WARNING" 
+                logPrefix = "[WARN]   "
+            Case "DETAIL"
+                logPrefix = "[DETAIL] "
+            Case Else
+                logPrefix = "[INFO]   "
+        End Select
+        
+        Debug.Print timestamp & " " & logPrefix & "> " & message
+    End If
+End Sub
+
 ' ===================================================================
 Function GetDefaultTimelineConfig() As TimelineConfig
     ' Lazy initialization: Initialize config if not already done
@@ -206,7 +293,7 @@ Sub CreateTimelineFromData()
         ' Single slide - use existing logic
         Dim sld As Slide: Set sld = CreateTimelineSlide()
         Call RenderTimeline(sld, config, dateRange, swimlaneOrg, timelineData)
-        Debug.Print Format(Now, "dd-mmm-yyyy hh:mm:ss") & "> Timeline generation completed successfully - Single slide created with " & swimlaneOrg.Count & " swimlanes"
+        Call DebugLog("Timeline generation completed successfully - Single slide created with " & swimlaneOrg.Count & " swimlanes")
     Else
         ' Multi-slide generation - debug message handled within CreateMultiSlideTimeline
         Call CreateMultiSlideTimeline(config, dateRange, swimlaneOrg, timelineData, requiredSlides)
@@ -479,7 +566,7 @@ Function OrganizeEventsBySwimlanes(timelineEvents() As Variant, ByRef swimlanes(
         If eventType = "PHASE" Then
             swimlaneName = CStr(timelineEvents(i, 5))
             If Trim(swimlaneName) <> "" And LCase(Trim(swimlaneName)) <> "default" Then
-                Debug.Print "WARNING: Phase '" & CStr(timelineEvents(i, 0)) & "' has swimlane '" & swimlaneName & "' - ignoring swimlane (Phases are displayed in dedicated area)"
+                Call DebugLog("Phase '" & CStr(timelineEvents(i, 0)) & "' has swimlane '" & swimlaneName & "' - ignoring swimlane (Phases are displayed in dedicated area)", "WARNING")
             End If
             ' Skip phases when organizing swimlanes - they go to dedicated phase area
             GoTo NextEvent
@@ -547,7 +634,7 @@ NextEvent:
             validSwimlaneCount = validSwimlaneCount + 1
         Else
             ' Empty swimlane - show warning
-            Debug.Print "WARNING: Swimlane '" & swimlanes(i) & "' contains no Features or Milestones - skipping swimlane"
+            Call DebugLog("Swimlane '" & swimlanes(i) & "' contains no Features or Milestones - skipping swimlane", "WARNING")
         End If
     Next i
     
@@ -564,7 +651,7 @@ NextEvent:
         ' No valid swimlanes found
         ReDim swimlanes(0 To 0)
         ReDim swimlaneEvents(0 To 0)
-        Debug.Print "WARNING: No valid swimlanes found with Features or Milestones"
+        Call DebugLog("No valid swimlanes found with Features or Milestones", "WARNING")
     End If
     
     OrganizeEventsBySwimlanes = validSwimlaneCount
@@ -1061,12 +1148,12 @@ Sub DrawBar(sld As Slide, x As Single, y As Single, width As Single, height As S
     
     ' Validate parameters to prevent runtime errors
     If width <= 0 Or height <= 0 Then
-        Debug.Print "DrawBar: Invalid dimensions - width=" & width & ", height=" & height
+        Call DebugLog("DrawBar: Invalid dimensions - width=" & width & ", height=" & height, "ERROR")
         Exit Sub
     End If
     
     If x < 0 Or y < 0 Or x > 2000 Or y > 2000 Then
-        Debug.Print "DrawBar: Invalid position - x=" & x & ", y=" & y
+        Call DebugLog("DrawBar: Invalid position - x=" & x & ", y=" & y, "ERROR")
         Exit Sub
     End If
     
@@ -1091,12 +1178,12 @@ Sub DrawPhaseBar(sld As Slide, x As Single, y As Single, width As Single, height
     
     ' Validate parameters to prevent runtime errors
     If width <= 0 Or height <= 0 Then
-        Debug.Print "DrawPhaseBar: Invalid dimensions - width=" & width & ", height=" & height
+        Call DebugLog("DrawPhaseBar: Invalid dimensions - width=" & width & ", height=" & height, "ERROR")
         Exit Sub
     End If
     
     If x < 0 Or y < 0 Or x > 2000 Or y > 2000 Then
-        Debug.Print "DrawPhaseBar: Invalid position - x=" & x & ", y=" & y
+        Call DebugLog("DrawPhaseBar: Invalid position - x=" & x & ", y=" & y, "ERROR")
         Exit Sub
     End If
     
@@ -1467,65 +1554,6 @@ Sub AddEnhancedFeatureLabels(sld As Slide, barStartX As Single, barEndX As Singl
     dateRangeShape.Fill.Visible = msoFalse
     dateRangeShape.Line.Visible = msoFalse
 End Sub
-
-Function GetColorFromTaskName(taskName As String, colorName As String) As Long
-    ' Smart color detection combining explicit color and task name analysis
-    
-    ' First, try to get color from explicit color column
-    If Trim(colorName) <> "" And LCase(Trim(colorName)) <> "default" Then
-        GetColorFromTaskName = GetColor(colorName)
-        Exit Function
-    End If
-    
-    ' If no explicit color, analyze task name for phase type
-    Dim lowerTaskName As String: lowerTaskName = LCase(taskName)
-    
-    ' === Target Format Phase Detection ===
-    If InStr(lowerTaskName, "discovery") > 0 Or InStr(lowerTaskName, "mapping") > 0 Or InStr(lowerTaskName, "analysis") > 0 Then
-        GetColorFromTaskName = RGB(118, 203, 127) ' Green for discovery/mapping
-    ElseIf InStr(lowerTaskName, "test") > 0 Or InStr(lowerTaskName, "qa") > 0 Or InStr(lowerTaskName, "validation") > 0 Then
-        GetColorFromTaskName = RGB(160, 160, 160) ' Gray for testing
-    ElseIf InStr(lowerTaskName, "build") > 0 Or InStr(lowerTaskName, "rollout") > 0 Or InStr(lowerTaskName, "deploy") > 0 Or InStr(lowerTaskName, "production") > 0 Then
-        GetColorFromTaskName = RGB(68, 114, 196) ' Blue for build/rollout
-    Else
-        ' Default color based on position or swimlane context
-        GetColorFromTaskName = RGB(68, 114, 196) ' Professional blue default
-    End If
-End Function
-
-Function GetColor(name As String) As Long
-    ' Enhanced color mapping with phase-specific target colors
-    Select Case LCase(name)
-        ' === Target Format Phase Colors ===
-        Case "blue": GetColor = RGB(68, 114, 196)               ' Blue
-        Case "brown": GetColor = RGB(165, 42, 42)
-        Case "darkgreen": GetColor = RGB(0, 100, 0)
-        Case "gray", "grey": GetColor = RGB(160, 160, 160)      ' Grey
-        Case "green": GetColor = RGB(118, 203, 127)             ' Green
-        Case "lightblue": GetColor = RGB(173, 216, 230)
-        Case "lightgreen": GetColor = RGB(144, 238, 144)
-        Case "navy": GetColor = RGB(25, 25, 112)
-        Case "orange": GetColor = RGB(255, 153, 0)              ' Vibrant orange
-        Case "pink": GetColor = RGB(255, 182, 193)
-        Case "purple": GetColor = RGB(112, 48, 160)             ' Deep purple
-        Case "red": GetColor = RGB(220, 20, 60)                 ' Crimson red
-        Case "teal": GetColor = RGB(0, 128, 128)
-        Case "yellow": GetColor = RGB(255, 192, 0)              ' Golden yellow
-        
-        ' === Auto-detect phase type from task name ===
-        Case Else:
-            ' Smart color detection based on task name content
-            If InStr(LCase(name), "map") > 0 Or InStr(LCase(name), "discover") > 0 Then
-                GetColor = RGB(118, 203, 127) ' Green for mapping/discovery
-            ElseIf InStr(LCase(name), "test") > 0 Or InStr(LCase(name), "qa") > 0 Then
-                GetColor = RGB(160, 160, 160) ' Grey for testing
-            ElseIf InStr(LCase(name), "rollout") > 0 Or InStr(LCase(name), "deploy") > 0 Or InStr(LCase(name), "build") > 0 Then
-                GetColor = RGB(68, 114, 196) ' Blue for rollout/deployment
-            Else
-                GetColor = RGB(68, 114, 196) ' Default professional blue
-            End If
-    End Select
-End Function
 
 Function ReadDataFromExcel(sheetName As String) As Variant
     Dim xlApp As Object, xlBook As Object, xlSheet As Object
@@ -2136,7 +2164,7 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
     End If
     
     ' Debug message with actual slides created count
-    Debug.Print Format(Now, "dd-mmm-yyyy hh:mm:ss") & "> Timeline generation completed successfully - " & actualSlidesCreated & " slides created with " & swimlaneOrg.Count & " swimlanes distributed across slides"
+    Call DebugLog("Timeline generation completed successfully - " & actualSlidesCreated & " slides created with " & swimlaneOrg.Count & " swimlanes distributed across slides")
 End Sub
 
 Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As TimelineDateRange, _
@@ -2213,10 +2241,10 @@ Sub ApplyCustomSlideLayout(sld As Slide, layoutName As String)
     If layoutFound Then
         ' Apply the found layout
         sld.customLayout = customLayout
-        Debug.Print sld.name & " - Applied custom layout: " & layoutName
+        Call DebugLog(sld.name & " - Applied custom layout: " & layoutName, "DETAIL")
     Else
         ' Layout not found - use fallback
-        Debug.Print "WARNING: Layout '" & layoutName & "' not found. Using default layout."
+        Call DebugLog("Layout '" & layoutName & "' not found. Using default layout.", "WARNING")
         GoTo LayoutError
     End If
     
@@ -2227,5 +2255,5 @@ LayoutError:
     On Error Resume Next
     sld.customLayout = ActivePresentation.SlideMaster.CustomLayouts(1)
     On Error GoTo 0
-    Debug.Print sld.name & " - Applied fallback layout due to error with: " & layoutName
+    Call DebugLog(sld.name & " - Applied fallback layout due to error with: " & layoutName, "WARNING")
 End Sub

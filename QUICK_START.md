@@ -30,7 +30,9 @@ Go Live           | 6/15/2025 |           | Milestone | green   | Deployment
 3. Insert → Module
 4. Copy and paste the entire **timeline.bas** code (or File → Import File)
 5. Press `F5` or Run → Run Sub to execute `CreateTimelineFromData`
-6. View → Immediate Window (or `Ctrl+G`) to see outout and error messages
+6. View → Immediate Window (or `Ctrl+G`) to see output and error messages
+
+**Note**: Configuration is handled automatically with the global configuration object - no manual setup required!
 
 ### Step 4: Review Your Timeline
 - A new slide will be created with your timeline
@@ -59,12 +61,31 @@ Go Live           | 6/15/2025 |           | Milestone | green   | Deployment
 
 ## 🔧 Customization Options
 
-### Modify Timeline Appearance:
-Edit these constants in the VBA code:
+### Global Configuration System:
+The timeline generator uses a global configuration object for optimal performance:
+
 ```vba
-Const SwimlaneHeight As Integer = 120     ' Space between swimlanes
-Const LaneHeight As Integer = 50          ' Space between lanes
-Const TimelineTop As Single = 80          ' Distance from top
+' Configuration is automatically initialized - no manual setup required
+' Access and modify global configuration:
+Dim config As TimelineConfig: config = GetDefaultTimelineConfig()
+
+' Customize key settings:
+config.laneHeight = 60                     ' Increase lane spacing
+config.swimlaneBottomMargin = 10           ' Increase swimlane separation
+config.featureNameLabelMaxWidth = 400      ' Allow wider feature labels
+```
+
+### Modify Timeline Appearance:
+Edit the `InitializeGlobalConfig()` function for permanent changes:
+```vba
+Sub InitializeGlobalConfig()
+    With globalConfig
+        .laneHeight = 60                    ' Space between lanes
+        .swimlaneBottomMargin = 10          ' Space between swimlanes
+        .timelineAxisY = 120                ' Distance from top
+        .laneSpacingWithTopLabels = 40      ' Extra space for top labels
+    End With
+End Sub
 ```
 
 ### Add Custom Colors:
@@ -78,12 +99,12 @@ Case "maroon": GetColor = RGB(128, 0, 0)
 
 | Problem | Solution |
 |---------|----------|
+| "Method or data member not found" | Verify `TimelineConfig` type definition is complete with all properties |
 | "Excel is not open" | Make sure Excel is running with your data file open |
 | "Sheet 'TimelineData' not found" | Verify sheet name is exactly "TimelineData" |
 | "No valid data found" | Check that data starts in row 2 with headers in row 1 |
 | Events overlapping | Use more swimlanes or check date formats |
-| Timeline too cramped | Increase SwimlaneHeight or LaneHeight constants |
-
+| Timeline too cramped | Modify `laneHeight` or `swimlaneBottomMargin` in global config |
 ## 📈 Advanced Features
 
 ### Multiple Project Tracking:
