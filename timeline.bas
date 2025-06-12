@@ -36,13 +36,17 @@
 ' USER-DEFINED TYPES (MUST BE AT MODULE LEVEL)
 ' ===================================================================
 Type TimelineConfig
+    configInitialized As Boolean
+    ' === SLIDE LAYOUT CONFIGURATION ===
+    slideLayoutName As String
+    ' === SLIDE DIMENSIONS AND SPACING ===
     slideWidth As Single
     slideHeight As Single
     timelineAxisY As Single
     calendarHeaderY As Single
     swimlaneStartY As Single
     axisPadding As Integer
-    circleSize As Integer
+    milestoneDiamondSize As Integer
     elementHeight As Integer
     laneHeight As Integer
     swimlaneHeight As Integer
@@ -51,31 +55,28 @@ Type TimelineConfig
     fontName As String
     fontSize As Integer
     ' === DYNAMIC LABEL WIDTH CONSTRAINTS ===
-    featureNameLabelMinWidth As Single      ' Minimum width for feature name labels
-    featureNameLabelMaxWidth As Single      ' Maximum width for feature name labels
-    featureDurationLabelMinWidth As Single  ' Minimum width for feature duration labels
-    featureDurationLabelMaxWidth As Single  ' Maximum width for feature duration labels
-    featureDateRangeLabelMinWidth As Single ' Minimum width for feature date range labels
-    featureDateRangeLabelMaxWidth As Single ' Maximum width for feature date range labels
-    milestoneLabelMinWidth As Single        ' Minimum width for milestone labels
-    milestoneLabelMaxWidth As Single        ' Maximum width for milestone labels
-    phaseLabelMinWidth As Single            ' Minimum width for phase labels
-    phaseLabelMaxWidth As Single            ' Maximum width for phase labels
+    featureNameLabelMinWidth As Single
+    featureNameLabelMaxWidth As Single
+    featureDurationLabelMinWidth As Single
+    featureDurationLabelMaxWidth As Single
+    featureDateRangeLabelMinWidth As Single
+    featureDateRangeLabelMaxWidth As Single
+    milestoneLabelMinWidth As Single
+    milestoneLabelMaxWidth As Single
+    phaseLabelMinWidth As Single
+    phaseLabelMaxWidth As Single
     ' === LABEL POSITIONING CONSTANTS ===
-    labelVerticalOffset As Single           ' Vertical offset for centering labels to shapes (-8)
-    labelHeight As Single                  ' Standard height for event labels (16px)
-    labelInternalPadding As Single          ' Padding for labels inside bars (20px, 10px each side)
+    labelVerticalOffset As Single
+    labelHeight As Single
+    labelInternalPadding As Single
     ' === SPACING AND LAYOUT CONSTRAINTS ===
-    swimlanePadding As Single               ' Padding between swimlanes (5px)
-    swimlaneContentPadding As Single        ' Buffer from swimlane top to first element (10px)
-    laneSpacingWithTopLabels As Single      ' Lane spacing when labels are on top (35px)
-    laneSpacingWithInsideLabels As Single   ' Lane spacing when labels are inside (20px)
-    elementBottomPadding As Single          ' Padding below bottom-most element (5px)
+    swimlaneBottomMargin As Single
+    swimlaneContentPadding As Single
+    laneSpacingWithTopLabels As Single
+    laneSpacingWithInsideLabels As Single
     ' === MINIMUM DIMENSIONS AND CONSTRAINTS ===
-    minimumBarWidth As Single               ' Minimum width for bars with invalid dates (10px)
-    bottomMarginForSlides As Single         ' Bottom margin for multi-slide calculations (30px)
-    ' === SLIDE LAYOUT CONFIGURATION ===
-    slideLayoutName As String               ' User-configurable slide layout name (e.g., "Timeline Layout")
+    minimumBarWidth As Single
+    bottomMarginForSlides As Single
 End Type
 
 Type TimelineDateRange
@@ -91,13 +92,99 @@ Type SwimlaneOrganization
 End Type
 
 ' ===================================================================
+' GLOBAL TIMELINE CONFIGURATION OBJECT
+' ===================================================================
+' Single source of truth for all timeline configuration values
+' Initialized once at module level, accessible throughout the application
+
+Public globalConfig As TimelineConfig
+
+' ===================================================================
+' CONFIGURATION INITIALIZATION
+' ===================================================================
+Sub InitializeGlobalConfig()
+    ' Initialize the global configuration object once
+    ' Called automatically when needed or manually for customization
+    
+    With globalConfig
+        .configInitialized = True               ' Flag to indicate config is initialized
+
+        ' === SLIDE LAYOUT CONFIGURATION ===
+        .slideLayoutName = "Blank"              ' User-configurable slide layout name (empty = use ppLayoutBlank fallback)
+        .fontName = "Calibri"                   ' Professional font
+        .fontSize = 9                           ' Standard font size for labels
+        .slideWidth = 960                       ' 16:9 aspect ratio
+        .slideHeight = 540
+        .timelineAxisY = 110                    ' Moved up to optimize space after phase area reduction
+        .calendarHeaderY = 50                   ' Calendar header area (50-70px)
+        .swimlaneStartY = .timelineAxisY + 5    ' Swimlanes start at 115px with 5px buffer
+        .axisPadding = 40                       ' Padding for timeline space
+        .milestoneDiamondSize = 16                        ' Increased milestone size for better visibility
+        .elementHeight = 16                     ' Slightly increased element height for better visibility
+        .laneHeight = 48                        ' Increased lane spacing to accommodate top labels with proper gaps
+        .swimlaneHeight = 85                    ' Slightly increased swimlane spacing for more content
+        .swimlaneEmptyHeight = 0                ' Empty swimlanes collapse to 0 height
+        .swimlaneHeaderWidth = 100              ' Header width for swimlane labels
+        
+        ' === CONFIGURABLE DYNAMIC LABEL WIDTH CONSTRAINTS ===
+        ' Feature name labels (inside bars or on top)
+        .featureNameLabelMinWidth = 30          ' Minimum width for feature name labels
+        .featureNameLabelMaxWidth = 300         ' Maximum width for feature name labels
+        
+        ' Feature duration labels (left side of bars: "N d")
+        .featureDurationLabelMinWidth = 25      ' Minimum width for duration labels
+        .featureDurationLabelMaxWidth = 50      ' Maximum width for duration labels
+        
+        ' Feature date range labels (right side of bars: "dd mmm - dd mmm")
+        .featureDateRangeLabelMinWidth = 80     ' Minimum width for date range labels
+        .featureDateRangeLabelMaxWidth = 150    ' Maximum width for date range labels
+        
+        ' Milestone labels (positioned intelligently left/right with DYNAMIC WIDTH based on text length)
+        .milestoneLabelMinWidth = 30            ' Minimum width for milestone labels (dynamic sizing)
+        .milestoneLabelMaxWidth = 300           ' Maximum width for milestone labels (dynamic sizing)
+        
+        ' Phase labels (two-line labels inside phase bars)
+        .phaseLabelMinWidth = 80                ' Minimum width for phase labels
+        .phaseLabelMaxWidth = 200               ' Maximum width for phase labels
+        
+        ' === LABEL POSITIONING CONSTANTS ===
+        .labelVerticalOffset = -8               ' Vertical offset for centering labels to shapes
+        .labelHeight = 16                       ' Standard height for event labels
+        .labelInternalPadding = 20              ' Padding for labels inside bars (10px on each side)
+        
+        ' === SPACING AND LAYOUT CONSTRAINTS ===
+        .swimlaneBottomMargin = 5                    ' Padding between swimlanes
+        .swimlaneContentPadding = 2             ' Buffer from swimlane top to first element
+        .laneSpacingWithTopLabels = 35          ' Lane spacing when labels are on top
+        .laneSpacingWithInsideLabels = 20       ' Lane spacing when labels are inside
+        
+        ' === MINIMUM DIMENSIONS AND CONSTRAINTS ===
+        .minimumBarWidth = 10                   ' Minimum width for bars with invalid dates
+        .bottomMarginForSlides = 30             ' Bottom margin for multi-slide calculations
+        
+    End With
+End Sub
+
+' ===================================================================
+Function GetDefaultTimelineConfig() As TimelineConfig
+    ' Lazy initialization: Initialize config if not already done
+    ' This ensures the global config is always available when needed
+    
+    ' Check if config is initialized (test a required field)
+    If globalConfig.configInitialized = False Then
+        Call InitializeGlobalConfig
+    End If
+    
+    GetDefaultTimelineConfig = globalConfig
+End Function
+
+' ===================================================================
 ' MAIN TIMELINE GENERATOR ENTRY POINT
 ' ===================================================================
 Sub CreateTimelineFromData()
-    ' Initialize configuration
-    Dim config As TimelineConfig
-    config = GetDefaultTimelineConfig()
-    
+    ' Initialize global configuration (lazy loading)
+    Dim config As TimelineConfig: config = GetDefaultTimelineConfig()
+      
     ' Load and validate data
     Dim timelineData() As Variant
     timelineData = LoadAndValidateData("TimelineData")
@@ -132,67 +219,6 @@ End Sub
 ' ===================================================================
 ' CONFIGURATION FUNCTIONS
 ' ===================================================================
-Function GetDefaultTimelineConfig() As TimelineConfig
-    ' Professional timeline configuration with optimized spacing and white space utilization
-    ' Enhanced for proper vertical spacing when feature bar labels are positioned on top
-    With GetDefaultTimelineConfig
-        ' === SLIDE LAYOUT CONFIGURATION ===
-        .slideLayoutName = "Blank"          ' User-configurable slide layout name (empty = use ppLayoutBlank fallback)
-        .fontName = "Calibri"               ' Professional font
-        .fontSize = 9                       ' Standard font size for labels
-        .slideWidth = 960                   ' 16:9 aspect ratio
-        .slideHeight = 540                  '
-        .timelineAxisY = 110                ' Moved up to optimize space after phase area reduction
-        .calendarHeaderY = 50               ' Calendar header area (50-70px)
-        .swimlaneStartY = .timelineAxisY + 5         ' Swimlanes start at 115px with 5px buffer
-        .axisPadding = 40                   ' Padding for timeline space
-        .circleSize = 16                    ' Increased milestone size for better visibility
-        .elementHeight = 16                 ' Slightly increased element height for better visibility
-        .laneHeight = 48                    ' Increased lane spacing to accommodate top labels with proper gaps
-        .swimlaneHeight = 85                ' Slightly increased swimlane spacing for more content
-        .swimlaneEmptyHeight = 0            ' Empty swimlanes collapse to 0 height
-        .swimlaneHeaderWidth = 100          ' Header width for swimlane labels
-        
-        ' === CONFIGURABLE DYNAMIC LABEL WIDTH CONSTRAINTS ===
-        ' Feature name labels (inside bars or on top)
-        .featureNameLabelMinWidth = 30   ' Minimum width for feature name labels
-        .featureNameLabelMaxWidth = 300  ' Maximum width for feature name labels
-        
-        ' Feature duration labels (left side of bars: "N d")
-        .featureDurationLabelMinWidth = 25   ' Minimum width for duration labels
-        .featureDurationLabelMaxWidth = 50   ' Maximum width for duration labels
-        
-        ' Feature date range labels (right side of bars: "dd mmm - dd mmm")
-        .featureDateRangeLabelMinWidth = 80  ' Minimum width for date range labels
-        .featureDateRangeLabelMaxWidth = 150 ' Maximum width for date range labels
-        
-        ' Milestone labels (positioned intelligently left/right with DYNAMIC WIDTH based on text length)
-        .milestoneLabelMinWidth = 30     ' Minimum width for milestone labels (dynamic sizing)
-        .milestoneLabelMaxWidth = 300    ' Maximum width for milestone labels (dynamic sizing)
-        
-        ' Phase labels (two-line labels inside phase bars)
-        .phaseLabelMinWidth = 80         ' Minimum width for phase labels
-        .phaseLabelMaxWidth = 200        ' Maximum width for phase labels
-        
-        ' === LABEL POSITIONING CONSTANTS ===
-        .labelVerticalOffset = -8        ' Vertical offset for centering labels to shapes
-        .labelHeight = 16                ' Standard height for event labels
-        .labelInternalPadding = 1        ' Padding for labels inside bars (10px on each side)
-        
-        ' === SPACING AND LAYOUT CONSTRAINTS ===
-        .swimlanePadding = 5             ' Padding between swimlanes
-        .swimlaneContentPadding = 2     ' Buffer from swimlane top to first element
-        .laneSpacingWithTopLabels = 35   ' Lane spacing when labels are on top
-        .laneSpacingWithInsideLabels = 20 ' Lane spacing when labels are inside
-        .elementBottomPadding = 2        ' Padding below bottom-most element
-        
-        ' === MINIMUM DIMENSIONS AND CONSTRAINTS ===
-        .minimumBarWidth = 10            ' Minimum width for bars with invalid dates
-        .bottomMarginForSlides = 30      ' Bottom margin for multi-slide calculations
-        
-    End With
-End Function
-
 Function LoadAndValidateData(sheetName As String) As Variant
     ' Load data from Excel and validate structure
     Dim data() As Variant
@@ -292,15 +318,19 @@ Sub RenderTimeline(sld As Slide, config As TimelineConfig, ByRef dateRange As Ti
     Call RenderPhasesInDedicatedArea(sld, config, dateRange, data)
 End Sub
 
-Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As SwimlaneOrganization)
-    ' Render swimlane headers, backgrounds, and axes with dynamic heights
+Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As SwimlaneOrganization, _
+                   Optional startIndex As Integer = 0, Optional endIndex As Integer = -1)
+    ' Universal swimlane renderer for both single and multi-slide scenarios
+    ' startIndex/endIndex allow subset rendering for multi-slide support
+    
+    ' Default to all swimlanes if no range specified
+    If endIndex = -1 Then endIndex = swimlaneOrg.Count - 1
     
     ' Calculate dynamic positions for each swimlane
     Dim currentY As Single: currentY = config.swimlaneStartY
-    Dim swimlanePaddingValue As Single: swimlanePaddingValue = config.swimlanePadding ' User-configurable padding between swimlanes
     
     Dim i As Integer
-    For i = 0 To swimlaneOrg.Count - 1
+    For i = startIndex To endIndex
         ' Calculate required lanes for this swimlane
         Dim requiredLanes As Integer: requiredLanes = 1 ' Default minimum
         If Not IsEmpty(swimlaneOrg.swimlaneEvents(i)) Then
@@ -310,49 +340,36 @@ Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As Swiml
             requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
         End If
         
-        ' Calculate actual height based on content (NEW SYSTEM)
+        ' Calculate dynamic height for this swimlane (standardized approach)
         Dim dynamicSwimlaneHeight As Single
-        If Not IsEmpty(swimlaneOrg.swimlaneEvents(i)) Then
-            Dim tempEvents() As Variant: tempEvents = swimlaneOrg.swimlaneEvents(i)
-            Dim tempEventLanes() As Integer
-            ReDim tempEventLanes(0 To UBound(tempEvents))
-            
-            ' Use the new content-based height calculation with proper parameters
-            dynamicSwimlaneHeight = CalculateSwimlaneActualHeight(tempEvents, tempEventLanes, config, _
-                1, headerWidth, Date)
-        Else
-            dynamicSwimlaneHeight = 0 ' Empty swimlanes collapse to 0 height
-        End If
-        
-        ' No minimum height constraints - swimlanes collapse to actual content size
+        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
         
         ' Enhanced swimlane header with matching height and vertical centering
-        'Call AddEnhancedSwimlaneHeader(sld, 10, currentY - 2, _
-        '    swimlaneOrg.swimlanes(i), fontName, 11, dynamicSwimlaneHeight)
+        Call AddEnhancedSwimlaneHeader(sld, 10, currentY - 1.5, _
+            swimlaneOrg.swimlanes(i), config.fontName, 11, dynamicSwimlaneHeight)
         
         ' Dynamic background size based on actual content - EXTENDED BY 25PX LEFT AND RIGHT
-        Call DrawSwimlaneBackground(sld, headerWidth - 25, currentY, _
-            config.slideWidth - headerWidth - config.axisPadding + 50, _
-            dynamicSwimlaneHeight)
+        Call DrawSwimlaneBackground(sld, config.swimlaneHeaderWidth - 25, currentY, _
+            config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding + 50, dynamicSwimlaneHeight)
         
         ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + swimlanePaddingValue
+        currentY = currentY + dynamicSwimlaneHeight + config.swimlaneBottomMargin
     Next i
 End Sub
 
 Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As TimelineDateRange, _
-                        swimlaneOrg As SwimlaneOrganization)
-    ' Render events within each swimlane with dynamic positioning based on actual heights
+                        swimlaneOrg As SwimlaneOrganization, Optional startIndex As Integer = 0, Optional endIndex As Integer = -1)
+    ' Universal swimlane events renderer for both single and multi-slide scenarios
+    ' startIndex/endIndex allow subset rendering for multi-slide support
     
-    ' Extract additional config values to avoid ByRef issues
-    Dim baseSwimlaneHeight As Integer: baseSwimlaneHeight = config.swimlaneHeight
+    ' Default to all swimlanes if no range specified
+    If endIndex = -1 Then endIndex = swimlaneOrg.Count - 1
     
-    ' Calculate dynamic positions for each swimlane (same logic as RenderSwimlanes)
+    ' Calculate dynamic positions for each swimlane
     Dim currentY As Single: currentY = config.swimlaneStartY
-    Dim swimlanePaddingValue As Single: swimlanePaddingValue = config.swimlanePadding ' User-configurable padding between swimlanes - same as RenderSwimlanes
     
     Dim i As Integer
-    For i = 0 To swimlaneOrg.Count - 1
+    For i = startIndex To endIndex
         Dim currentEvents() As Variant: currentEvents = swimlaneOrg.swimlaneEvents(i)
         
         If Not IsEmpty(currentEvents) Then
@@ -362,40 +379,24 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
             Dim totalLanes As Integer
             totalLanes = AssignLanesToEvents(currentEvents, eventLanes, dateRange, config)
             
-            ' Draw lane separator lines if multiple lanes are needed
-            If totalLanes > 1 Then
-                Call DrawLaneSeparators(sld, config, currentY, totalLanes)
-            End If
-            
             ' Place events with enhanced styling using dynamic Y position
             Call PlaceEventsInSwimlane(sld, currentEvents, eventLanes, currentY, _
                 dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate, _
-                config.fontName, config.circleSize, config.elementHeight, config.laneHeight)
+                config.fontName, config.milestoneDiamondSize, config.elementHeight, config.laneHeight)
         End If
         
-        ' Calculate actual height based on content (NEW SYSTEM - matching RenderSwimlanes)
-        Dim dynamicSwimlaneHeight As Single
+        ' Calculate dynamic height for this swimlane to get next position
+        Dim requiredLanes As Integer: requiredLanes = 1
         If Not IsEmpty(currentEvents) Then
-            ' Use the new content-based height calculation with proper parameters
-            dynamicSwimlaneHeight = CalculateSwimlaneActualHeight(currentEvents, eventLanes, config, _
-                scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate) ' Use actual parameters available in this function
-        Else
-            dynamicSwimlaneHeight = 0 ' Empty swimlanes collapse to 0 height
+            requiredLanes = CalculateSwimlaneRequiredLanes(currentEvents, eventLanes, config)
         End If
         
-        ' No minimum height constraints - swimlanes collapse to actual content size
+        Dim dynamicSwimlaneHeight As Single
+        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
         
-        ' Move to next swimlane position with padding - same as RenderSwimlanes
-        currentY = currentY + dynamicSwimlaneHeight + swimlanePaddingValue
+        ' Move to next swimlane position with padding
+        currentY = currentY + dynamicSwimlaneHeight + config.swimlaneBottomMargin
     Next i
-End Sub
-
-Sub DrawLaneSeparators(sld As Slide, config As TimelineConfig, swimlaneY As Single, totalLanes As Integer)
-    ' Draw subtle separator lines between lanes within a swimlane - REMOVED per user request
-    
-    ' Lane separators disabled to clean up timeline appearance
-    ' No lines will be drawn in the bar area
-    Exit Sub
 End Sub
 
 Sub RenderPhasesInDedicatedArea(sld As Slide, config As TimelineConfig, dateRange As TimelineDateRange, data() As Variant)
@@ -571,7 +572,7 @@ End Function
 
 Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Integer, swimlaneY As Single, _
                          scaleFactor As Double, headerWidth As Single, minDate As Date, _
-                         fontName As String, circleSize As Integer, elementHeight As Integer, laneHeight As Integer)
+                         fontName As String, milestoneDiamondSize As Integer, elementHeight As Integer, laneHeight As Integer)
     ' Place all events within a specific swimlane with enhanced styling
     ' Ensures all events stay within their designated swimlane boundaries
     ' Uses dynamic lane spacing based on whether labels are positioned on top
@@ -641,18 +642,13 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
 
         If typ = "Milestone" Then
             ' Draw milestone with enhanced styling
-            Call DrawCircle(sld, xPosLoop - circleSize / 2, yPos - circleSize / 2, circleSize, GetColor(colorName))
+            Call DrawDiamond(sld, xPosLoop - milestoneDiamondSize / 2, yPos - milestoneDiamondSize / 2, milestoneDiamondSize, GetColor(colorName))
             
             ' Use intelligent label positioning same as feature bars
             Call AddIntelligentMilestoneLabel(sld, xPosLoop, yPos, label, fontName, config.fontSize, 0)
             
             ' Add date label vertically centered to the diamond (moved up by 4px for better positioning)
-            Call AddDateLabel(sld, xPosLoop + 15, yPos - 8, Format(startDateLoop, "dd-mmm"), fontName, 8)
-            
-            ' Draw connector line from swimlane axis to milestone
-            If eventLanes(i) > 0 Then
-                Call DrawConnectorLine(sld, xPosLoop, swimlaneY, yPos - circleSize / 2)
-            End If
+            Call AddDateLabel(sld, xPosLoop + 15, yPos + config.labelVerticalOffset, Format(startDateLoop, "dd-mmm"), fontName, 8)
             
         ElseIf typ = "Feature" And IsDate(endDateLoop) Then
             ' Use consistent positioning for all lanes
@@ -664,7 +660,7 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
             ' Validate date order and calculate proper width
             Dim barWidthLoop As Single: barWidthLoop = featureEndXLoop - xPosLoop
             If barWidthLoop <= 0 Then
-                barWidthLoop = 10 ' Minimum width for invalid dates
+                barWidthLoop = config.minimumBarWidth ' Minimum width for invalid dates
                 featureEndXLoop = xPosLoop + barWidthLoop
             End If
             
@@ -679,12 +675,6 @@ Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Int
             ' 2. Date range label: on the right side (dd mmm - dd mmm)
             ' 3. Duration label: on the left side (N d)
             Call AddEnhancedFeatureLabels(sld, xPosLoop, featureEndXLoop, featureYPos, label, startDateLoop, endDateLoop, fontName, barWidthLoop)
-            
-            ' Draw connector lines from swimlane axis to feature bar
-            If eventLanes(i) > 0 Then
-                Call DrawConnectorLine(sld, xPosLoop, swimlaneY, featureYPos)
-                Call DrawConnectorLine(sld, featureEndXLoop, swimlaneY, featureYPos)
-            End If
             
         ElseIf typ = "Phase" And IsDate(endDateLoop) Then
             ' Draw phase bar (collection of features - positioned between calendar and timeline)
@@ -955,12 +945,12 @@ Function AssignLanesToEvents(timelineEvents() As Variant, ByRef eventLanes() As 
             ' Check if this lane is available (no overlaps)
             For j = 0 To i - 1
                 If eventLanes(j) = assignedLane And EventsOverlap(timelineEvents, i, j, dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate) Then
-                    ' Conflict detected - use CORRECTED logic
+                    ' Conflict detected
                     Dim currentEventEnd As Date, conflictEventEnd As Date
                     currentEventEnd = GetEventEndDate(timelineEvents, i)
                     conflictEventEnd = GetEventEndDate(timelineEvents, j)
                     
-                    ' FIXED: Event ending LATER gets moved to higher lane (further down)
+                    ' Event ending LATER gets moved to higher lane (further down)
                     If currentEventEnd > conflictEventEnd Then
                         ' Current event ends later, so it moves to higher lane
                         assignedLane = assignedLane + 1
@@ -1051,16 +1041,8 @@ Sub DrawLine(sld As Slide, x1 As Single, y1 As Single, x2 As Single, y2 As Singl
     End With
 End Sub
 
-Sub DrawConnectorLine(sld As Slide, x As Single, y1 As Single, y2 As Single)
-    ' Draw a subtle connector line with professional styling - REMOVED per user request
-    
-    ' Connector lines disabled to clean up timeline bar area
-    ' No connector lines will be drawn
-    Exit Sub
-End Sub
-
 ' --- Event Shape Rendering ---
-Sub DrawCircle(sld As Slide, x As Single, y As Single, size As Integer, clr As Long)
+Sub DrawDiamond(sld As Slide, x As Single, y As Single, size As Integer, clr As Long)
     ' Draw milestone with diamond shape for professional timelines
     Dim shp As Shape
     Set shp = sld.Shapes.AddShape(msoShapeDiamond, x, y, size, size)
@@ -1200,7 +1182,7 @@ Function CalculateDynamicLabelWidth(labelText As String, fontSize As Integer, mi
     
     ' Calculate width with padding
     Dim calculatedWidth As Single
-    calculatedWidth = (Len(labelText) * baseCharWidth) + 20 ' 10px padding on each side
+    calculatedWidth = (Len(labelText) * baseCharWidth)
     
     ' Apply min/max bounds from config
     If calculatedWidth < minWidth Then calculatedWidth = minWidth
@@ -2002,34 +1984,29 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
         End If
     Next i
     
-    ' Calculate the bottom-most position of all elements
+    ' Calculate the bottom-most position based on actual lane assignments
     Dim maxBottomPosition As Single: maxBottomPosition = 0
     
-    ' Calculate Y positions for each element and find the bottom-most position
-    For i = 0 To UBound(events)
-        Dim currentLane As Integer: currentLane = eventLanes(i)
-        Dim elementY As Single: elementY = config.swimlaneContentPadding
-        
-        ' Calculate Y position with dynamic spacing (same logic as PlaceEventsInSwimlane)
-        Dim laneIndex As Integer
-        For laneIndex = 0 To currentLane
-            If laneIndex <= maxLane And lanesWithTopLabels(laneIndex) Then
-                elementY = elementY + config.laneSpacingWithTopLabels ' Top padding for lanes with top labels
-            Else
-                elementY = elementY + config.laneSpacingWithInsideLabels ' Top padding for lanes with inside labels
-            End If
-        Next laneIndex
-        
-        ' Calculate bottom position based on element type
-        ' Default element height
-        Dim elementBottomY As Single
-        elementBottomY = elementY + CSng(config.elementHeight) / 2
-        
-        ' Track the maximum bottom position
-        If elementBottomY > maxBottomPosition Then
-            maxBottomPosition = elementBottomY
+    ' === USE totalLanes TO DETERMINE HEIGHT ===
+    ' Calculate height based on actual lane assignments instead of individual element positioning
+    Dim laneIndex As Integer
+    Dim currentY As Single: currentY = config.swimlaneContentPadding
+    
+    ' Calculate cumulative height for all assigned lanes
+    For laneIndex = 0 To totalLanes - 1
+        ' Add spacing for each lane based on label positioning
+        If laneIndex <= maxLane And lanesWithTopLabels(laneIndex) Then
+            currentY = currentY + config.laneSpacingWithTopLabels
+        Else
+            currentY = currentY + config.laneSpacingWithInsideLabels
         End If
-    Next i
+    Next laneIndex
+    
+    ' Add element height for the bottom-most lane
+    currentY = currentY + CSng(config.elementHeight)
+    
+    ' Use the calculated height based on lane assignments
+    maxBottomPosition = currentY
        
     ' No minimum height constraints - swimlanes collapse completely to actual content size
     
@@ -2037,24 +2014,24 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
 End Function
 
 Function CalculateSwimlaneRequiredLanes(events() As Variant, ByRef eventLanes() As Integer, config As TimelineConfig) As Integer
-    ' Legacy function - now calculates equivalent lanes based on actual height for compatibility
-    ' This maintains compatibility with existing code while using the new height-based calculation
+    ' Simplified to directly return lane count from lane assignment
+    ' This eliminates duplicate logic and uses the actual lane assignments
     
     If IsEmpty(events) Then
         CalculateSwimlaneRequiredLanes = 0 ' Minimum lanes for empty swimlane
         Exit Function
     End If
     
-    ' Calculate actual height needed
-    Dim actualHeight As Single
-    actualHeight = CalculateSwimlaneActualHeight(events, eventLanes, config, 1, config.swimlaneHeaderWidth, Date)
+    ' Use temporary variables for lane assignment
+    Dim tempDateRange As TimelineDateRange
+    tempDateRange.scaleFactor = 1  ' Placeholder for overlap detection
+    tempDateRange.minDate = Date   ' Placeholder
     
-    ' Convert to equivalent lanes for compatibility (minimum 1)
-    Dim equivalentLanes As Integer
-    equivalentLanes = Int(actualHeight / CSng(config.laneHeight)) + 1
-    If equivalentLanes < 1 Then equivalentLanes = 1
+    Dim totalLanes As Integer
+    totalLanes = AssignLanesToEvents(events, eventLanes, tempDateRange, config)
     
-    CalculateSwimlaneRequiredLanes = equivalentLanes
+    ' Return actual lane count (minimum 1)
+    CalculateSwimlaneRequiredLanes = IIf(totalLanes > 0, totalLanes, 0)
 End Function
 
 ' ===================================================================
@@ -2073,7 +2050,6 @@ Function CalculateRequiredSlides(swimlaneOrg As SwimlaneOrganization, config As 
     ' Calculate total height needed for all swimlanes
     totalRequiredHeight = 0
     currentY = config.swimlaneStartY
-    Const swimlanePadding As Single = 5
     
     Dim i As Integer
     For i = 0 To swimlaneOrg.Count - 1
@@ -2094,7 +2070,7 @@ Function CalculateRequiredSlides(swimlaneOrg As SwimlaneOrganization, config As 
         ' Ensure minimum height
         If swimlaneHeight < config.swimlaneHeight Then swimlaneHeight = config.swimlaneHeight
         
-        totalRequiredHeight = totalRequiredHeight + swimlaneHeight + swimlanePadding
+        totalRequiredHeight = totalRequiredHeight + swimlaneHeight + config.swimlaneBottomMargin
     Next i
     
     ' Calculate number of slides needed
@@ -2115,7 +2091,6 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
     ' Calculate swimlane heights for distribution
     Dim swimlaneHeights() As Single
     ReDim swimlaneHeights(0 To swimlaneOrg.Count - 1)
-    Const swimlanePadding As Single = 5
     
     Dim i As Integer
     For i = 0 To swimlaneOrg.Count - 1
@@ -2137,7 +2112,7 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
     
     For i = 0 To swimlaneOrg.Count - 1
         ' Check if current swimlane fits on current slide
-        If currentSlideHeight + swimlaneHeights(i) + swimlanePadding > availableHeight And i > swimlaneStartIndex Then
+        If currentSlideHeight + swimlaneHeights(i) + config.swimlaneBottomMargin > availableHeight And i > swimlaneStartIndex Then
             ' Create slide for current batch of swimlanes
             Call CreateSingleSlideWithSwimlanes(config, dateRange, swimlaneOrg, timelineData, _
                 swimlaneStartIndex, i - 1, currentSlide)
@@ -2146,10 +2121,10 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
             ' Start new slide
             currentSlide = currentSlide + 1
             swimlaneStartIndex = i
-            currentSlideHeight = swimlaneHeights(i) + swimlanePadding
+            currentSlideHeight = swimlaneHeights(i) + config.swimlaneBottomMargin
         Else
             ' Add to current slide
-            currentSlideHeight = currentSlideHeight + swimlaneHeights(i) + swimlanePadding
+            currentSlideHeight = currentSlideHeight + swimlaneHeights(i) + config.swimlaneBottomMargin
         End If
     Next i
     
@@ -2181,88 +2156,14 @@ Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As Timeli
     Call DrawEnhancedTopTimelineAxis(sld, dateRange, config)
     
     ' === DUPLICATE PHASES SECTION ===
-    Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)
-    
-    ' === RENDER SUBSET OF SWIMLANES ===
-    Call RenderSwimlaneSubset(sld, config, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
-    Call RenderSwimlaneEventsSubset(sld, config, dateRange, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
+    Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)    ' === RENDER SUBSET OF SWIMLANES ===
+    Call RenderSwimlanes(sld, config, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
+    Call RenderSwimlaneEvents(sld, config, dateRange, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
     
     ' Add slide number indicator if multiple slides
     If slideNumber > 1 Then
         Call AddSlideNumberIndicator(sld, slideNumber, config.fontName)
     End If
-End Sub
-
-Sub RenderSwimlaneSubset(sld As Slide, config As TimelineConfig, swimlaneOrg As SwimlaneOrganization, _
-                        startIndex As Integer, endIndex As Integer)
-    ' Render swimlane headers and backgrounds for a subset of swimlanes
-    
-    Dim currentY As Single: currentY = config.swimlaneStartY
-    Const swimlanePadding As Single = 5
-    
-    Dim i As Integer
-    For i = startIndex To endIndex
-        ' Calculate required lanes for this swimlane
-        Dim requiredLanes As Integer: requiredLanes = 1
-        If Not IsEmpty(swimlaneOrg.swimlaneEvents(i)) Then
-            Dim tempEvents() As Variant: tempEvents = swimlaneOrg.swimlaneEvents(i)
-            Dim tempEventLanes() As Integer
-            ReDim tempEventLanes(0 To UBound(tempEvents))
-            requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
-        End If
-        
-        ' Calculate dynamic height for this swimlane
-        Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
-        
-        ' Enhanced swimlane header with matching height and vertical centering
-        Call AddEnhancedSwimlaneHeader(sld, 10, currentY - 1.5, _
-            swimlaneOrg.swimlanes(i), config.fontName, 11, dynamicSwimlaneHeight)
-        
-        ' Dynamic background size based on actual content - EXTENDED BY 25PX LEFT AND RIGHT
-        Call DrawSwimlaneBackground(sld, config.swimlaneHeaderWidth - 25, currentY, _
-            config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding + 50, dynamicSwimlaneHeight)
-        
-        ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + swimlanePadding
-    Next i
-End Sub
-
-Sub RenderSwimlaneEventsSubset(sld As Slide, config As TimelineConfig, dateRange As TimelineDateRange, _
-                              swimlaneOrg As SwimlaneOrganization, startIndex As Integer, endIndex As Integer)
-    ' Render events for a subset of swimlanes
-    
-    Dim currentY As Single: currentY = config.swimlaneStartY
-    Const swimlanePadding As Single = 5
-    
-    Dim i As Integer
-    For i = startIndex To endIndex
-        Dim currentEvents() As Variant: currentEvents = swimlaneOrg.swimlaneEvents(i)
-        
-        If Not IsEmpty(currentEvents) Then
-            ' Detect overlapping events and assign lanes
-            Dim eventLanes() As Integer
-            ReDim eventLanes(0 To UBound(currentEvents))
-            Dim totalLanes As Integer
-            totalLanes = AssignLanesToEvents(currentEvents, eventLanes, dateRange, config)
-            
-            ' Place events with enhanced styling using dynamic Y position
-            Call PlaceEventsInSwimlane(sld, currentEvents, eventLanes, currentY, _
-                dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate, config.fontName, config.circleSize, config.elementHeight, config.laneHeight)
-        End If
-        
-        ' Calculate dynamic height for this swimlane to get next position
-        Dim requiredLanes As Integer: requiredLanes = 1
-        If Not IsEmpty(currentEvents) Then
-            requiredLanes = CalculateSwimlaneRequiredLanes(currentEvents, eventLanes, config)
-        End If
-        
-        Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
-        
-        ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + swimlanePadding
-    Next i
 End Sub
 
 Sub AddSlideNumberIndicator(sld As Slide, slideNumber As Integer, fontName As String)
