@@ -71,6 +71,7 @@ Icon?
 .idea/
 .github/
 .clinerules/
+.specstory/
 *.swp
 *.swo
 
