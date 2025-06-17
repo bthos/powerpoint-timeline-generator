@@ -97,7 +97,7 @@ End Type
 ' Debug logging system for troubleshooting lane calculation logic
 ' Set DEBUG = True to enable comprehensive lane debugging
 
-Public Const DEBUG_LOG As Boolean = False  ' Set to True to enable debug logging
+Public Const DEBUG_LOG As Boolean = True  ' Set to True to enable debug logging
 
 ' ===================================================================
 ' GLOBAL TIMELINE CONFIGURATION OBJECT
@@ -426,21 +426,28 @@ Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As Swiml
             ReDim tempEventLanes(0 To UBound(tempEvents))
             requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
         End If
-        
-        ' Calculate dynamic height for this swimlane (standardized approach)
-        Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
-        
+
+        ' Calculate ACTUAL content-based height for this swimlane
+        Dim actualSwimlaneHeight As Single
+        If Not IsEmpty(swimlaneOrg.swimlaneEvents(i)) Then
+            actualSwimlaneHeight = CalculateSwimlaneActualHeight(tempEvents, tempEventLanes, config, _
+                1, config.swimlaneHeaderWidth, Date) + 10  ' Add 10px bottom padding
+        Else
+            actualSwimlaneHeight = 30  ' Minimum height for empty swimlanes
+        End If
+
+        Call DebugLog("Swimlane " & i & " (" & swimlaneOrg.swimlanes(i) & ") - Events: " & IIf(IsEmpty(swimlaneOrg.swimlaneEvents(i)), 0, UBound(tempEvents) + 1) & ", Required lanes: " & requiredLanes & ", Actual background height: " & actualSwimlaneHeight & "px", "DETAIL")
+
         ' Enhanced swimlane header with matching height and vertical centering
         Call AddEnhancedSwimlaneHeader(sld, 10, currentY - 1.5, _
-            swimlaneOrg.swimlanes(i), config.fontName, 11, dynamicSwimlaneHeight)
+            swimlaneOrg.swimlanes(i), config.fontName, 11, actualSwimlaneHeight)
         
-        ' Dynamic background size based on actual content - EXTENDED BY 25PX LEFT AND RIGHT
+        ' Background size based on ACTUAL content height
         Call DrawSwimlaneBackground(sld, config.swimlaneHeaderWidth - 25, currentY, _
-            config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding + 50, dynamicSwimlaneHeight)
+            config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding + 50, actualSwimlaneHeight)
         
         ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + config.swimlaneBottomMargin
+        currentY = currentY + actualSwimlaneHeight + config.swimlaneBottomMargin
     Next i
 End Sub
 
@@ -472,17 +479,17 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
                 config.fontName, config.milestoneDiamondSize, config.elementHeight, config.laneHeight)
         End If
         
-        ' Calculate dynamic height for this swimlane to get next position
-        Dim requiredLanes As Integer: requiredLanes = 1
+        ' Calculate ACTUAL content-based height for this swimlane to get next position
+        Dim actualSwimlaneHeight As Single
         If Not IsEmpty(currentEvents) Then
-            requiredLanes = CalculateSwimlaneRequiredLanes(currentEvents, eventLanes, config)
+            actualSwimlaneHeight = CalculateSwimlaneActualHeight(currentEvents, eventLanes, config, _
+                dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate) + config.swimlaneBottomMargin  ' Add 10px bottom padding
+        Else
+            actualSwimlaneHeight = 30  ' Minimum height for empty swimlanes
         End If
         
-        Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
-        
         ' Move to next swimlane position with padding
-        currentY = currentY + dynamicSwimlaneHeight + config.swimlaneBottomMargin
+        currentY = currentY + actualSwimlaneHeight
     Next i
 End Sub
 
@@ -2012,9 +2019,6 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
         End If
     Next i
     
-    ' Calculate the bottom-most position based on actual lane assignments
-    Dim maxBottomPosition As Single: maxBottomPosition = 0
-    
     ' === USE totalLanes TO DETERMINE HEIGHT ===
     ' Calculate height based on actual lane assignments instead of individual element positioning
     Dim laneIndex As Integer
@@ -2031,14 +2035,11 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
     Next laneIndex
     
     ' Add element height for the bottom-most lane
-    currentY = currentY + CSng(config.elementHeight)
+    ' currentY = currentY + CSng(config.elementHeight)
     
-    ' Use the calculated height based on lane assignments
-    maxBottomPosition = currentY
-       
     ' No minimum height constraints - swimlanes collapse completely to actual content size
     
-    CalculateSwimlaneActualHeight = maxBottomPosition
+    CalculateSwimlaneActualHeight = currentY
 End Function
 
 Function CalculateSwimlaneRequiredLanes(events() As Variant, ByRef eventLanes() As Integer, config As TimelineConfig) As Integer
@@ -2096,7 +2097,7 @@ Function CalculateRequiredSlides(swimlaneOrg As SwimlaneOrganization, config As 
         End If
         
         ' Ensure minimum height
-        If swimlaneHeight < config.swimlaneHeight Then swimlaneHeight = config.swimlaneHeight
+        ' If swimlaneHeight < config.swimlaneHeight Then swimlaneHeight = config.swimlaneHeight
         
         totalRequiredHeight = totalRequiredHeight + swimlaneHeight + config.swimlaneBottomMargin
     Next i
