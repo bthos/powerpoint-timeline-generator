@@ -95,9 +95,8 @@ End Type
 ' DEBUG CONFIGURATION FOR LANE CALCULATIONS
 ' ===================================================================
 ' Debug logging system for troubleshooting lane calculation logic
-' Set DEBUG = True to enable comprehensive lane debugging
 
-Public Const DEBUG_LOG As Boolean = True  ' Set to True to enable debug logging
+Public DEBUG_LEVEL As String
 
 ' ===================================================================
 ' GLOBAL TIMELINE CONFIGURATION OBJECT
@@ -113,6 +112,14 @@ Public globalConfig As TimelineConfig
 Sub InitializeGlobalConfig()
     ' Initialize the global configuration object once
     ' Called automatically when needed or manually for customization
+
+    DEBUG_LEVEL = "INFO"                        ' Default debug level
+    ' Set DEBUG_LEVEL to control what messages are logged:
+    ' "NONE" - No debug messages
+    ' "ERROR" - Only error messages
+    ' "WARNING" - Error and warning messages
+    ' "INFO" - Error, warning, and info messages
+    ' "DETAIL" - All messages (most verbose)
     
     With globalConfig
         .configInitialized = True               ' Flag to indicate config is initialized
@@ -225,19 +232,56 @@ End Function
 ' DEBUG LOGGING UTILITIES
 ' ===================================================================
 Sub DebugLog(message As String, Optional level As String = "INFO")
-    ' Comprehensive debug logging
-    ' Outputs timestamped messages to Immediate Window when DEBUG is enabled
+    ' Comprehensive debug logging with level-based filtering
+    ' Outputs timestamped messages to Immediate Window based on DEBUG_LEVEL setting
     '
     ' Parameters:
     '   message - Debug message to log
-    '   level   - Log level: "INFO", "WARNING", "ERROR", "DETAIL"
+    '   level   - Log level: "ERROR", "WARNING", "INFO", "DETAIL"
+    '
+    ' Debug Level Hierarchy:
+    '   "NONE"      - No messages logged
+    '   "ERROR"     - Only ERROR messages
+    '   "WARNING"   - ERROR + WARNING messages
+    '   "INFO"      - ERROR + WARNING + INFO messages (default)
+    '   "DETAIL"    - All messages (most verbose)
     
-    If DEBUG_LOG Then
+    ' Initialize DEBUG_LEVEL if not set
+    If DEBUG_LEVEL = "" Then DEBUG_LEVEL = "INFO"
+    
+    ' Exit early if logging is disabled
+    If UCase(DEBUG_LEVEL) = "NONE" Then Exit Sub
+    
+    ' Normalize the input level
+    Dim normalizedLevel As String
+    normalizedLevel = UCase(Trim(level))
+    If normalizedLevel = "WARN" Then normalizedLevel = "WARNING"
+    
+    ' Determine if this message should be logged based on hierarchy
+    Dim shouldLog As Boolean
+    shouldLog = False
+    
+    Select Case UCase(DEBUG_LEVEL)
+        Case "ERROR"
+            shouldLog = (normalizedLevel = "ERROR")
+        Case "WARNING"
+            shouldLog = (normalizedLevel = "ERROR" Or normalizedLevel = "WARNING")
+        Case "INFO"
+            shouldLog = (normalizedLevel = "ERROR" Or normalizedLevel = "WARNING" Or normalizedLevel = "INFO")
+        Case "DETAIL"
+            shouldLog = (normalizedLevel = "ERROR" Or normalizedLevel = "WARNING" Or normalizedLevel = "INFO" Or normalizedLevel = "DETAIL")
+        Case Else
+            ' Default to INFO level if DEBUG_LEVEL is invalid
+            shouldLog = (normalizedLevel = "ERROR" Or normalizedLevel = "WARNING" Or normalizedLevel = "INFO")
+    End Select
+    
+    ' Log the message if it meets the level criteria
+    If shouldLog Then
         Dim timestamp As String
         timestamp = Format(Now, "dd-mmm-yyyy hh:mm:ss.000")
         
         Dim logPrefix As String
-        Select Case UCase(level)
+        Select Case normalizedLevel
             Case "ERROR"
                 logPrefix = "[ERROR]  "
             Case "WARNING" 
@@ -249,6 +293,29 @@ Sub DebugLog(message As String, Optional level As String = "INFO")
         End Select
         
         Debug.Print timestamp & " " & logPrefix & "> " & message
+    End If
+End Sub
+
+' ===================================================================
+' DEBUG LEVEL CONFIGURATION HELPER
+' ===================================================================
+Sub SetDebugLevel(level As String)
+    ' Helper function to set the debug level at runtime
+    ' Valid levels: "NONE", "ERROR", "WARNING", "INFO", "DETAIL"
+    '
+    ' Usage examples:
+    '   Call SetDebugLevel("ERROR")  ' Only show error messages
+    '   Call SetDebugLevel("DETAIL") ' Show all messages
+    '   Call SetDebugLevel("NONE")   ' Disable all debug output
+    
+    Dim validLevels As String
+    validLevels = "NONE,ERROR,WARNING,INFO,DETAIL"
+    
+    If InStr(validLevels, UCase(Trim(level))) > 0 Then
+        DEBUG_LEVEL = UCase(Trim(level))
+        Call DebugLog("Debug level changed to: " & DEBUG_LEVEL, "INFO")
+    Else
+        Call DebugLog("Invalid debug level '" & level & "'. Valid levels: " & validLevels, "ERROR")
     End If
 End Sub
 
