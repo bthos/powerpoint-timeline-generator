@@ -120,7 +120,7 @@ Sub InitializeGlobalConfig()
     ' "WARNING" - Error and warning messages
     ' "INFO" - Error, warning, and info messages
     ' "DETAIL" - All messages (most verbose)
-    
+
     With globalConfig
         .configInitialized = True               ' Flag to indicate config is initialized
 
@@ -284,7 +284,7 @@ Sub DebugLog(message As String, Optional level As String = "INFO")
         Select Case normalizedLevel
             Case "ERROR"
                 logPrefix = "[ERROR]  "
-            Case "WARNING" 
+            Case "WARNING"
                 logPrefix = "[WARN]   "
             Case "DETAIL"
                 logPrefix = "[DETAIL] "
