@@ -1637,37 +1637,6 @@ Sub AddEnhancedFeatureLabels(sld As Slide, barStartX As Single, barEndX As Singl
     dateRangeShape.Line.Visible = msoFalse
 End Sub
 
-Function GetDefaultSwimlane(swimlaneValue As Variant, eventType As Variant) As String
-    ' Smart default swimlane assignment when swimlane column is empty
-    ' This prevents all events from being assigned to a single "Default" swimlane
-    
-    ' If swimlane is explicitly provided, use it
-    If Not IsEmpty(swimlaneValue) And Trim(CStr(swimlaneValue)) <> "" Then
-        GetDefaultSwimlane = CStr(swimlaneValue)
-        Exit Function
-    End If
-    
-    ' If swimlane is empty, assign based on event type to create logical separation
-    Dim typeStr As String
-    If IsEmpty(eventType) Then
-        typeStr = "FEATURE" ' Default type
-    Else
-        typeStr = UCase(Trim(CStr(eventType)))
-    End If
-    
-    ' Assign default swimlanes based on event type
-    Select Case typeStr
-        Case "PHASE"
-            GetDefaultSwimlane = "Phases" ' Phases get their own swimlane
-        Case "MILESTONE"
-            GetDefaultSwimlane = "Milestones" ' Milestones get their own swimlane
-        Case "FEATURE"
-            GetDefaultSwimlane = "Features" ' Features get their own swimlane
-        Case Else
-            GetDefaultSwimlane = "General" ' Fallback for unknown types
-    End Select
-End Function
-
 Function ReadDataFromExcel(sheetName As String) As Variant
     Dim xlApp As Object, xlBook As Object, xlSheet As Object
     Dim lastRow As Long, i As Long, rawData() As Variant, result() As Variant
@@ -1708,7 +1677,7 @@ Function ReadDataFromExcel(sheetName As String) As Variant
         result(i - 1, 2) = rawData(i, 3) ' End Date
         result(i - 1, 3) = rawData(i, 4) ' Type
         result(i - 1, 4) = rawData(i, 5) ' Color
-        result(i - 1, 5) = GetDefaultSwimlane(rawData(i, 6), rawData(i, 4)) ' Swimlane with smart defaults
+        result(i - 1, 5) = IIf(IsEmpty(rawData(i, 6)), "Default", rawData(i, 6)) ' Swimlane
     Next i
 
     ReadDataFromExcel = result
