@@ -40,7 +40,7 @@ Create a sheet named "TimelineData" with the following columns:
 | E | Color | "red", "blue", "green", "orange" | "blue" |
 | F | Swimlane | Swimlane category/track (optional) | "Planning" |
 
-**Note**: The Swimlane column (F) is optional. If left empty, events will be assigned to the default (unnamed) swimlane.
+**Note**: The Swimlane column (F) is optional. If left empty, events will be assigned to the default (unnamed) swimlane. Row 1 should contain the header section.
 
 ## Sample Data
 
@@ -102,7 +102,8 @@ Case "yellow": GetColor = RGB(255, 255, 0)
 - **"No valid data found"**: Check that your data starts in row 2 (row 1 should contain headers)
 
 #### Swimlane Issues
-- **"All events on single swimlane"**: This occurs when the Swimlane column (F) is empty. Events with empty swimlane values are assigned to the default (unnamed) swimlane.
+- **"All events on single swimlane"**: This is normal behavior when the Swimlane column (F) is empty. Events with empty swimlane values are assigned to the default (unnamed) swimlane.
+- **"Events covering each other"**: This is the actual issue - when events on the same swimlane have overlapping positions that make them hard to read.
 - **To create custom swimlanes**: Populate column F with your desired swimlane names (e.g., "Planning", "Development", "Testing")
 
 #### Performance Issues
