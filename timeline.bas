@@ -658,15 +658,24 @@ Function OrganizeEventsBySwimlanes(timelineEvents() As Variant, ByRef swimlanes(
 NextEvent:
     Next i
     
-    ' Create swimlanes array
-    ReDim swimlanes(0 To swimlaneCount - 1)
-    ReDim swimlaneEvents(0 To swimlaneCount - 1)
-    
-    Dim parts() As String
-    parts = Split(Left(uniqueSwimlanes, Len(uniqueSwimlanes) - 1), "|")
-    For i = 0 To UBound(parts)
-        swimlanes(i) = parts(i)
-    Next i
+    ' Create swimlanes array - handle empty case
+    If swimlaneCount > 0 Then
+        ReDim swimlanes(0 To swimlaneCount - 1)
+        ReDim swimlaneEvents(0 To swimlaneCount - 1)
+        
+        Dim parts() As String
+        parts = Split(Left(uniqueSwimlanes, Len(uniqueSwimlanes) - 1), "|")
+        For i = 0 To UBound(parts)
+            swimlanes(i) = parts(i)
+        Next i
+    Else
+        ' No swimlanes found - create empty arrays
+        ReDim swimlanes(0 To 0)
+        ReDim swimlaneEvents(0 To 0)
+        Call DebugLog("No valid swimlanes found with Features or Milestones", "WARNING")
+        OrganizeEventsBySwimlanes = 0
+        Exit Function
+    End If
     
     ' Group events by swimlane (only Features and Milestones)
     Dim validSwimlaneCount As Integer: validSwimlaneCount = 0
@@ -721,14 +730,13 @@ NextEvent:
             swimlanes(i) = validSwimlanes(i)
             swimlaneEvents(i) = validSwimlaneEvents(i)
         Next i
+        
+        OrganizeEventsBySwimlanes = validSwimlaneCount
     Else
-        ' No valid swimlanes found
-        ReDim swimlanes(0 To 0)
-        ReDim swimlaneEvents(0 To 0)
-        Call DebugLog("No valid swimlanes found with Features or Milestones", "WARNING")
+        ' No valid swimlanes found - this should not happen if we had swimlanes initially
+        Call DebugLog("No valid swimlanes found with Features or Milestones after filtering", "WARNING")
+        OrganizeEventsBySwimlanes = 0
     End If
-    
-    OrganizeEventsBySwimlanes = validSwimlaneCount
 End Function
 
 Sub PlaceEventsInSwimlane(sld As Slide, events() As Variant, eventLanes() As Integer, swimlaneY As Single, _
