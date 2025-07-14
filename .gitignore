@@ -95,6 +95,9 @@ npm-debug.log*
 test_output/
 screenshots/
 exports/
+test_*.vbs
+test_*.bas
+TESTING_*.md
 
 # Personal notes and drafts
 .notes/
