@@ -38,7 +38,13 @@ Create a sheet named "TimelineData" with the following columns:
 | C | End Date | End date (optional for milestones) | 2/28/2025 |
 | D | Type | "Milestone" or "Phase" | "Milestone" |
 | E | Color | "red", "blue", "green", "orange" | "blue" |
-| F | Swimlane | Swimlane category/track | "Planning" |
+| F | Swimlane | Swimlane category/track (optional) | "Planning" |
+
+**Note**: The Swimlane column (F) is optional. If left empty, the system automatically assigns smart defaults based on event type:
+- Features → "Features" swimlane
+- Milestones → "Milestones" swimlane
+- Phases → "Phases" swimlane (displayed in dedicated area)
+- This prevents all events from appearing on a single swimlane when the column is not populated.
 
 ## Sample Data
 
@@ -98,6 +104,16 @@ Case "yellow": GetColor = RGB(255, 255, 0)
 - **"Excel is not open"**: Ensure Excel is running with your data file open
 - **"Sheet 'TimelineData' not found"**: Verify the sheet name matches exactly
 - **"No valid data found"**: Check that your data starts in row 2 (row 1 should contain headers)
+
+#### Swimlane Issues
+- **"All events on single swimlane"**: This typically occurs when the Swimlane column (F) is empty. The system now provides smart defaults:
+  - Empty swimlanes are automatically assigned based on event type
+  - Features → "Features" swimlane
+  - Milestones → "Milestones" swimlane  
+  - Phases → "Phases" swimlane (displayed in dedicated phase area)
+  - Unknown types → "General" swimlane
+- **To create custom swimlanes**: Populate column F with your desired swimlane names (e.g., "Planning", "Development", "Testing")
+- **Mixed swimlanes**: You can mix explicit swimlane names with empty cells - empty cells will get smart defaults
 
 #### Performance Issues
 - **Slow generation**: For 50+ events, consider using multi-slide distribution
