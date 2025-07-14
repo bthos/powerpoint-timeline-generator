@@ -2179,60 +2179,161 @@ End Function
 
 Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDateRange, _
                            swimlaneOrg As SwimlaneOrganization, timelineData() As Variant, requiredSlides As Integer)
-    ' Create multiple slides with distributed swimlanes, duplicating calendar and phase sections on each slide
+    ' Create multiple slides with distributed swimlanes, now supporting swimlane splitting
+    ' When swimlanes don't fit entirely, they are split to maximize space utilization
     
     Dim availableHeight As Single
     availableHeight = config.slideHeight - config.timelineAxisY - config.bottomMarginForSlides ' Available height per slide
     
-    ' Calculate swimlane heights for distribution
-    Dim swimlaneHeights() As Single
-    ReDim swimlaneHeights(0 To swimlaneOrg.Count - 1)
+    ' Track slides and swimlanes processed
+    Dim currentSlide As Integer: currentSlide = 1
+    Dim actualSlidesCreated As Integer: actualSlidesCreated = 0
+    Dim totalSwimlanesSplit As Integer: totalSwimlanesSplit = 0
     
+    ' Create a dynamic swimlane organization for processing
+    Dim workingOrg As SwimlaneOrganization
+    workingOrg.Count = swimlaneOrg.Count
+    ReDim workingOrg.swimlanes(0 To swimlaneOrg.Count - 1)
+    ReDim workingOrg.swimlaneEvents(0 To swimlaneOrg.Count - 1)
+    
+    ' Copy original data to working organization
     Dim i As Integer
     For i = 0 To swimlaneOrg.Count - 1
-        Dim requiredLanes As Integer: requiredLanes = 1
-        If Not IsEmpty(swimlaneOrg.swimlaneEvents(i)) Then
-            Dim tempEvents() As Variant: tempEvents = swimlaneOrg.swimlaneEvents(i)
-            Dim tempEventLanes() As Integer
-            ReDim tempEventLanes(0 To UBound(tempEvents))
-            requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
-        End If
-        swimlaneHeights(i) = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
+        workingOrg.swimlanes(i) = swimlaneOrg.swimlanes(i)
+        workingOrg.swimlaneEvents(i) = swimlaneOrg.swimlaneEvents(i)
     Next i
     
-    ' Distribute swimlanes across slides
-    Dim currentSlide As Integer: currentSlide = 1
-    Dim currentSlideHeight As Single: currentSlideHeight = 0
-    Dim swimlaneStartIndex As Integer: swimlaneStartIndex = 0
-    Dim actualSlidesCreated As Integer: actualSlidesCreated = 0
+    ' Process swimlanes with splitting support
+    Dim workingIndex As Integer: workingIndex = 0
     
-    For i = 0 To swimlaneOrg.Count - 1
-        ' Check if current swimlane fits on current slide
-        If currentSlideHeight + swimlaneHeights(i) + config.swimlaneBottomMargin > availableHeight And i > swimlaneStartIndex Then
-            ' Create slide for current batch of swimlanes
-            Call CreateSingleSlideWithSwimlanes(config, dateRange, swimlaneOrg, timelineData, _
-                swimlaneStartIndex, i - 1, currentSlide)
-            actualSlidesCreated = actualSlidesCreated + 1
+    Do While workingIndex < workingOrg.Count
+        ' Calculate current slide layout
+        Dim currentSlideOrg As SwimlaneOrganization
+        Dim currentSlideHeight As Single: currentSlideHeight = 0
+        Dim swimlanesForCurrentSlide As Integer: swimlanesForCurrentSlide = 0
+        
+        ' Build current slide by adding swimlanes that fit
+        ReDim currentSlideOrg.swimlanes(0 To workingOrg.Count - 1)
+        ReDim currentSlideOrg.swimlaneEvents(0 To workingOrg.Count - 1)
+        
+        ' Process swimlanes for current slide
+        Do While workingIndex < workingOrg.Count
+            ' Calculate height needed for this swimlane
+            Dim swimlaneHeight As Single: swimlaneHeight = 0
+            If Not IsEmpty(workingOrg.swimlaneEvents(workingIndex)) Then
+                Dim tempEvents() As Variant: tempEvents = workingOrg.swimlaneEvents(workingIndex)
+                Dim tempEventLanes() As Integer
+                ReDim tempEventLanes(0 To UBound(tempEvents))
+                Dim requiredLanes As Integer: requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
+                swimlaneHeight = CalculateSwimlaneActualHeight(tempEvents, tempEventLanes, config, _
+                    dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate) + config.swimlaneBottomMargin
+            Else
+                swimlaneHeight = config.swimlaneEmptyHeight + config.swimlaneBottomMargin
+            End If
             
-            ' Start new slide
+            ' Check if swimlane fits on current slide
+            If currentSlideHeight + swimlaneHeight <= availableHeight Then
+                ' Swimlane fits entirely - add to current slide
+                currentSlideOrg.swimlanes(swimlanesForCurrentSlide) = workingOrg.swimlanes(workingIndex)
+                currentSlideOrg.swimlaneEvents(swimlanesForCurrentSlide) = workingOrg.swimlaneEvents(workingIndex)
+                currentSlideHeight = currentSlideHeight + swimlaneHeight
+                swimlanesForCurrentSlide = swimlanesForCurrentSlide + 1
+                workingIndex = workingIndex + 1
+            Else
+                ' Swimlane doesn't fit - try to split it
+                Dim remainingHeight As Single: remainingHeight = availableHeight - currentSlideHeight
+                
+                ' Only attempt splitting if there's meaningful space left and we have events
+                If remainingHeight > config.laneHeight * 2 And Not IsEmpty(workingOrg.swimlaneEvents(workingIndex)) Then
+                    ' Attempt to split the swimlane
+                    Dim splitEvents() As Variant: tempEvents = workingOrg.swimlaneEvents(workingIndex)
+                    ReDim tempEventLanes(0 To UBound(tempEvents))
+                    
+                    ' Recalculate lanes for splitting
+                    Dim tempDateRange As TimelineDateRange
+                    tempDateRange.scaleFactor = dateRange.scaleFactor
+                    tempDateRange.minDate = dateRange.minDate
+                    Call AssignLanesToEvents(tempEvents, tempEventLanes, tempDateRange, config)
+                    
+                    ' Try to split the swimlane events
+                    Dim firstPartEvents() As Variant, firstPartLanes() As Integer
+                    Dim secondPartEvents() As Variant, secondPartLanes() As Integer
+                    
+                    If SplitSwimlaneEventsBySpace(tempEvents, tempEventLanes, remainingHeight, config, _
+                        dateRange.scaleFactor, config.swimlaneHeaderWidth, dateRange.minDate, _
+                        firstPartEvents, firstPartLanes, secondPartEvents, secondPartLanes) Then
+                        
+                        ' Split was successful
+                        If Not IsEmpty(firstPartEvents) And Not IsEmpty(firstPartEvents(0)) Then
+                            ' Add first part to current slide
+                            currentSlideOrg.swimlanes(swimlanesForCurrentSlide) = workingOrg.swimlanes(workingIndex)
+                            currentSlideOrg.swimlaneEvents(swimlanesForCurrentSlide) = firstPartEvents
+                            swimlanesForCurrentSlide = swimlanesForCurrentSlide + 1
+                            
+                            ' Update working organization with second part
+                            workingOrg.swimlanes(workingIndex) = workingOrg.swimlanes(workingIndex) & " (cont.)"
+                            workingOrg.swimlaneEvents(workingIndex) = secondPartEvents
+                            
+                            totalSwimlanesSplit = totalSwimlanesSplit + 1
+                            Call DebugLog("Split swimlane '" & workingOrg.swimlanes(workingIndex) & "' - " & _
+                                (UBound(firstPartEvents) + 1) & " events on slide " & currentSlide & ", " & _
+                                (UBound(secondPartEvents) + 1) & " events continue to next slide")
+                        End If
+                    End If
+                End If
+                
+                ' Exit loop to create current slide
+                Exit Do
+            End If
+        Loop
+        
+        ' Create slide with accumulated swimlanes
+        If swimlanesForCurrentSlide > 0 Then
+            currentSlideOrg.Count = swimlanesForCurrentSlide
+            Call CreateSingleSlideWithSwimlaneOrg(config, dateRange, currentSlideOrg, timelineData, currentSlide)
+            actualSlidesCreated = actualSlidesCreated + 1
             currentSlide = currentSlide + 1
-            swimlaneStartIndex = i
-            currentSlideHeight = swimlaneHeights(i) + config.swimlaneBottomMargin
-        Else
-            ' Add to current slide
-            currentSlideHeight = currentSlideHeight + swimlaneHeights(i) + config.swimlaneBottomMargin
         End If
-    Next i
+        
+        ' If we didn't advance workingIndex, we need to move to next slide regardless
+        ' This handles cases where even splitting doesn't help
+        If workingIndex < workingOrg.Count And swimlanesForCurrentSlide = 0 Then
+            workingIndex = workingIndex + 1
+        End If
+    Loop
     
-    ' Create final slide with remaining swimlanes
-    If swimlaneStartIndex <= swimlaneOrg.Count - 1 Then
-        Call CreateSingleSlideWithSwimlanes(config, dateRange, swimlaneOrg, timelineData, _
-            swimlaneStartIndex, swimlaneOrg.Count - 1, currentSlide)
-        actualSlidesCreated = actualSlidesCreated + 1
+    ' Debug message with comprehensive stats
+    Call DebugLog("Timeline generation completed successfully - " & actualSlidesCreated & _
+        " slides created with " & swimlaneOrg.Count & " original swimlanes" & _
+        IIf(totalSwimlanesSplit > 0, " (" & totalSwimlanesSplit & " swimlanes were split)", ""))
+End Sub
+
+Sub CreateSingleSlideWithSwimlaneOrg(config As TimelineConfig, dateRange As TimelineDateRange, _
+                                   swimlaneOrg As SwimlaneOrganization, timelineData() As Variant, slideNumber As Integer)
+    ' Create a single slide with a complete swimlane organization (used for split swimlanes)
+    
+    ' Create new slide
+    Dim sld As Slide
+    Set sld = CreateTimelineSlide()
+    
+    ' Calculate scale factor
+    dateRange.scaleFactor = (config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding) / _
+                           (dateRange.maxDate - dateRange.minDate)
+    
+    ' === DUPLICATE CALENDAR SECTION ===
+    Call DrawEnhancedTopTimelineAxis(sld, dateRange, config)
+    
+    ' === DUPLICATE PHASES SECTION ===
+    Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)
+    
+    ' === RENDER SWIMLANES ===
+    Call RenderSwimlanes(sld, config, swimlaneOrg, 0, swimlaneOrg.Count - 1)
+    Call RenderSwimlaneEvents(sld, config, dateRange, swimlaneOrg, 0, swimlaneOrg.Count - 1)
+    
+    ' Add slide number indicator if multiple slides
+    If slideNumber > 1 Then
+        Call AddSlideNumberIndicator(sld, slideNumber, config.fontName)
     End If
-    
-    ' Debug message with actual slides created count
-    Call DebugLog("Timeline generation completed successfully - " & actualSlidesCreated & " slides created with " & swimlaneOrg.Count & " swimlanes distributed across slides")
 End Sub
 
 Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As TimelineDateRange, _
@@ -2252,7 +2353,9 @@ Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As Timeli
     Call DrawEnhancedTopTimelineAxis(sld, dateRange, config)
     
     ' === DUPLICATE PHASES SECTION ===
-    Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)    ' === RENDER SUBSET OF SWIMLANES ===
+    Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)
+    
+    ' === RENDER SUBSET OF SWIMLANES ===
     Call RenderSwimlanes(sld, config, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
     Call RenderSwimlaneEvents(sld, config, dateRange, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
     
@@ -2283,6 +2386,156 @@ Sub AddSlideNumberIndicator(sld As Slide, slideNumber As Integer, fontName As St
     slideIndicator.Fill.Visible = msoFalse
     slideIndicator.Line.Visible = msoFalse
 End Sub
+
+' ===================================================================
+' SWIMLANE SPLITTING FUNCTIONS
+' ===================================================================
+
+Function CalculateEventHeight(eventData As Variant, eventLane As Integer, config As TimelineConfig, _
+                             scaleFactor As Double, leftPadding As Single, minDate As Date) As Single
+    ' Calculate the height required for a single event based on its type and lane position
+    ' This helps determine if individual events can fit in remaining space
+    
+    Dim eventType As String: eventType = UCase(CStr(eventData(3)))
+    Dim baseY As Single: baseY = eventLane * config.laneHeight
+    
+    ' Feature events need more space if they have top labels
+    If eventType = "FEATURE" And IsDate(eventData(2)) Then
+        If DetermineFeatureLabelPosition(CStr(eventData(0)), CDate(eventData(1)), CDate(eventData(2)), scaleFactor, config) Then
+            ' Label on top - need extra space
+            CalculateEventHeight = baseY + config.laneSpacingWithTopLabels
+        Else
+            ' Label inside - standard space
+            CalculateEventHeight = baseY + config.laneSpacingWithInsideLabels
+        End If
+    ElseIf eventType = "MILESTONE" Then
+        ' Milestones always have top labels
+        CalculateEventHeight = baseY + config.laneSpacingWithTopLabels
+    Else
+        ' Default spacing
+        CalculateEventHeight = baseY + config.laneHeight
+    End If
+End Function
+
+Function SplitSwimlaneEventsBySpace(events() As Variant, eventLanes() As Integer, _
+                                   availableHeight As Single, config As TimelineConfig, _
+                                   scaleFactor As Double, leftPadding As Single, minDate As Date, _
+                                   ByRef firstPartEvents() As Variant, ByRef firstPartLanes() As Integer, _
+                                   ByRef secondPartEvents() As Variant, ByRef secondPartLanes() As Integer) As Boolean
+    ' Split swimlane events into two parts based on available space
+    ' Returns True if split was successful, False if no events fit
+    
+    If IsEmpty(events) Then
+        SplitSwimlaneEventsBySpace = False
+        Exit Function
+    End If
+    
+    ' Calculate cumulative height for each event
+    Dim eventHeights() As Single
+    ReDim eventHeights(0 To UBound(events))
+    
+    Dim i As Integer
+    Dim maxHeightSoFar As Single: maxHeightSoFar = 0
+    
+    For i = 0 To UBound(events)
+        Dim eventHeight As Single
+        eventHeight = CalculateEventHeight(events(i), eventLanes(i), config, scaleFactor, leftPadding, minDate)
+        eventHeights(i) = eventHeight
+        
+        If eventHeight > maxHeightSoFar Then
+            maxHeightSoFar = eventHeight
+        End If
+    Next i
+    
+    ' Find the split point - last event that fits within available height
+    Dim splitIndex As Integer: splitIndex = -1
+    Dim currentMaxHeight As Single: currentMaxHeight = 0
+    
+    For i = 0 To UBound(events)
+        If eventHeights(i) > currentMaxHeight Then
+            currentMaxHeight = eventHeights(i)
+        End If
+        
+        ' Check if this event plus padding fits
+        If currentMaxHeight + config.swimlaneBottomMargin <= availableHeight Then
+            splitIndex = i
+        Else
+            Exit For
+        End If
+    Next i
+    
+    ' If no events fit, return False
+    If splitIndex = -1 Then
+        SplitSwimlaneEventsBySpace = False
+        Exit Function
+    End If
+    
+    ' If all events fit, no need to split
+    If splitIndex = UBound(events) Then
+        ' All events fit - copy to first part, leave second part empty
+        ReDim firstPartEvents(0 To UBound(events))
+        ReDim firstPartLanes(0 To UBound(eventLanes))
+        
+        For i = 0 To UBound(events)
+            firstPartEvents(i) = events(i)
+            firstPartLanes(i) = eventLanes(i)
+        Next i
+        
+        ' Second part is empty
+        ReDim secondPartEvents(0 To 0)
+        ReDim secondPartLanes(0 To 0)
+        secondPartEvents(0) = Empty
+        
+        SplitSwimlaneEventsBySpace = True
+        Exit Function
+    End If
+    
+    ' Split the events
+    ' First part: events 0 to splitIndex
+    ReDim firstPartEvents(0 To splitIndex)
+    ReDim firstPartLanes(0 To splitIndex)
+    
+    For i = 0 To splitIndex
+        firstPartEvents(i) = events(i)
+        firstPartLanes(i) = eventLanes(i)
+    Next i
+    
+    ' Second part: events splitIndex+1 to end
+    Dim secondPartSize As Integer: secondPartSize = UBound(events) - splitIndex - 1
+    ReDim secondPartEvents(0 To secondPartSize)
+    ReDim secondPartLanes(0 To secondPartSize)
+    
+    For i = 0 To secondPartSize
+        secondPartEvents(i) = events(splitIndex + 1 + i)
+        secondPartLanes(i) = eventLanes(splitIndex + 1 + i)
+    Next i
+    
+    SplitSwimlaneEventsBySpace = True
+End Function
+
+Function CreateSplitSwimlaneOrganization(originalOrg As SwimlaneOrganization, _
+                                       swimlaneIndex As Integer, _
+                                       splitEvents() As Variant, _
+                                       splitLanes() As Integer) As SwimlaneOrganization
+    ' Create a new swimlane organization with one swimlane containing the split events
+    Dim result As SwimlaneOrganization
+    
+    result.Count = 1
+    ReDim result.swimlanes(0 To 0)
+    ReDim result.swimlaneEvents(0 To 0)
+    
+    ' Copy swimlane name with "(cont.)" suffix for continuation
+    result.swimlanes(0) = originalOrg.swimlanes(swimlaneIndex) & " (cont.)"
+    
+    ' Copy split events
+    If Not IsEmpty(splitEvents) And Not IsEmpty(splitEvents(0)) Then
+        result.swimlaneEvents(0) = splitEvents
+    Else
+        result.swimlaneEvents(0) = Empty
+    End If
+    
+    CreateSplitSwimlaneOrganization = result
+End Function
 
 ' ===================================================================
 ' SLIDE LAYOUT CONFIGURATION HELPER
