@@ -23,9 +23,9 @@ Setup Test Environment
 
 Load Environment Variables
     [Documentation]    Load environment variables from .env file if it exists
-    ${env_exists}=    Run Keyword And Return Status    File Should Exist    .env
+    ${env_exists}=    Run Keyword And Return Status    File Should Exist    ../.env
     IF    ${env_exists}
-        ${env_content}=    Get File    .env
+        ${env_content}=    Get File    ../.env
         Log    Environment variables loaded from .env    level=DEBUG
     ELSE
         Log    No .env file found, using default values    level=DEBUG
