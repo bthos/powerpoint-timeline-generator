@@ -1,0 +1,94 @@
+name: PowerPoint Validation Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  # Cross-platform structural tests (no Office required)
+  structural-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Create test directories
+      run: |
+        mkdir -p reports tests/data/baseline
+
+    - name: Run data validation tests
+      run: |
+        cd tests && robot --outputdir ../reports --loglevel INFO test_timeline_data.robot
+
+    - name: Run PowerPoint structural tests
+      if: always()
+      run: |
+        cd tests && robot --outputdir ../reports --loglevel INFO test_powerpoint_output.robot
+      continue-on-error: true
+
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-reports-${{ matrix.os }}-${{ matrix.python-version }}
+        path: reports/
+        retention-days: 7
+
+  # Windows-only VBA automation tests (requires Office)
+  vba-automation-tests:
+    runs-on: windows-latest
+    if: false  # Disabled by default - enable when Office is available
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pywin32
+
+    - name: Run VBA macro
+      run: |
+        python tests/scripts/run_vba_macro.py --excel-file timeline.xlsx --output output/generated_timeline.pptx
+      continue-on-error: true
+
+    - name: Validate generated presentation
+      if: success()
+      run: |
+        cd tests && robot --outputdir ../reports --variable PPTX_FILE_PATH:../output/generated_timeline.pptx test_powerpoint_output.robot
+
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: vba-test-reports
+        path: |
+          reports/
+          output/
+        retention-days: 7
+

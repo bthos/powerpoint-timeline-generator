@@ -129,8 +129,8 @@ Sub InitializeGlobalConfig()
         .axisPadding = 40                       ' Padding for timeline space
         .milestoneDiamondSize = 16                        ' Increased milestone size for better visibility
         .elementHeight = 16                     ' Slightly increased element height for better visibility
-        .laneHeight = 48                        ' Increased lane spacing to accommodate top labels with proper gaps
-        .swimlaneHeight = 85                    ' Slightly increased swimlane spacing for more content
+        .laneHeight = 48                        ' Lane spacing to accommodate top labels with proper gaps
+        .swimlaneHeight = 48                    ' Minimum swimlane height (same as 1 lane)
         .swimlaneEmptyHeight = 0                ' Empty swimlanes collapse to 0 height
         .swimlaneHeaderWidth = 100              ' Header width for swimlane labels
         
@@ -393,7 +393,7 @@ Sub RenderTimeline(sld As Slide, config As TimelineConfig, ByRef dateRange As Ti
                            (dateRange.maxDate - dateRange.minDate)
 
     ' Render swimlane structure
-    Call RenderSwimlanes(sld, config, swimlaneOrg)
+    Call RenderSwimlanes(sld, config, swimlaneOrg, dateRange)
     
     ' Render top timeline axis with enhanced features
     Call DrawEnhancedTopTimelineAxis(sld, dateRange, config)
@@ -406,25 +406,30 @@ Sub RenderTimeline(sld As Slide, config As TimelineConfig, ByRef dateRange As Ti
 End Sub
 
 Sub RenderSwimlanes(sld As Slide, config As TimelineConfig, swimlaneOrg As SwimlaneOrganization, _
-                   Optional startIndex As Integer = 0, Optional endIndex As Integer = -1)
+                   dateRange As TimelineDateRange, Optional startIndex As Integer = 0, Optional endIndex As Integer = -1)
     ' Universal swimlane renderer for both single and multi-slide scenarios
     ' startIndex/endIndex allow subset rendering for multi-slide support
     
     ' Default to all swimlanes if no range specified
     If endIndex = -1 Then endIndex = swimlaneOrg.Count - 1
     
+    ' Pre-calculate all lane assignments to ensure consistency between headers and event placement
+    ' This ensures the same lane assignments are used throughout rendering
+    
     ' Calculate dynamic positions for each swimlane
     Dim currentY As Single: currentY = config.swimlaneStartY
     
     Dim i As Integer
     For i = startIndex To endIndex
-        ' Calculate required lanes for this swimlane
+        ' Calculate required lanes for this swimlane using actual event placement logic
         Dim requiredLanes As Integer: requiredLanes = 1 ' Default minimum
         If Not IsEmpty(swimlaneOrg.swimlaneEvents(i)) Then
             Dim tempEvents() As Variant: tempEvents = swimlaneOrg.swimlaneEvents(i)
             Dim tempEventLanes() As Integer
             ReDim tempEventLanes(0 To UBound(tempEvents))
-            requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
+            ' Call AssignLanesToEvents directly to get actual lane count (same as RenderSwimlaneEvents)
+            requiredLanes = AssignLanesToEvents(tempEvents, tempEventLanes, dateRange, config)
+            If requiredLanes < 1 Then requiredLanes = 1
         End If
         
         ' Calculate dynamic height for this swimlane (standardized approach)
@@ -459,12 +464,14 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
     For i = startIndex To endIndex
         Dim currentEvents() As Variant: currentEvents = swimlaneOrg.swimlaneEvents(i)
         
+        ' Calculate required lanes using same logic as RenderSwimlanes
+        Dim totalLanes As Integer: totalLanes = 1
+        Dim eventLanes() As Integer
+        
         If Not IsEmpty(currentEvents) Then
-            ' Detect overlapping events and assign lanes
-            Dim eventLanes() As Integer
             ReDim eventLanes(0 To UBound(currentEvents))
-            Dim totalLanes As Integer
             totalLanes = AssignLanesToEvents(currentEvents, eventLanes, dateRange, config)
+            If totalLanes < 1 Then totalLanes = 1
             
             ' Place events with enhanced styling using dynamic Y position
             Call PlaceEventsInSwimlane(sld, currentEvents, eventLanes, currentY, _
@@ -472,14 +479,9 @@ Sub RenderSwimlaneEvents(sld As Slide, config As TimelineConfig, dateRange As Ti
                 config.fontName, config.milestoneDiamondSize, config.elementHeight, config.laneHeight)
         End If
         
-        ' Calculate dynamic height for this swimlane to get next position
-        Dim requiredLanes As Integer: requiredLanes = 1
-        If Not IsEmpty(currentEvents) Then
-            requiredLanes = CalculateSwimlaneRequiredLanes(currentEvents, eventLanes, config)
-        End If
-        
+        ' Use same height calculation as RenderSwimlanes for consistency
         Dim dynamicSwimlaneHeight As Single
-        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
+        dynamicSwimlaneHeight = CalculateDynamicSwimlaneHeight(totalLanes, config.laneHeight, config.swimlaneHeight)
         
         ' Move to next swimlane position with padding
         currentY = currentY + dynamicSwimlaneHeight + config.swimlaneBottomMargin
@@ -810,6 +812,8 @@ Sub AddEnhancedSwimlaneHeader(sld As Slide, x As Single, y As Single, txt As Str
         Left:=x, Top:=y, width:=65, height:=swimlaneHeight)
     
     With shp.TextFrame2
+        .AutoSize = msoAutoSizeNone ' Prevent textbox from auto-resizing to fit text
+        .WordWrap = msoTrue
         .TextRange.Text = txt
         .TextRange.Font.name = fontName
         .TextRange.Font.size = fontSize
@@ -1044,9 +1048,11 @@ Function AssignLanesToEvents(timelineEvents() As Variant, ByRef eventLanes() As 
                         laneFound = False
                         Exit For
                     Else
-                        ' Conflicting event ends later, move it to higher lane (no limit)
-                        Call MoveEventToHigherLane(eventLanes, j, assignedLane + 1)
-                        Exit For ' Re-check this lane since we moved the conflict
+                        ' Conflicting event ends later, move it to higher lane
+                        Call MoveEventToHigherLane(eventLanes, j, assignedLane + 1, currentLanes)
+                        ' Re-check this lane since we moved the conflict - there may be more conflicts
+                        laneFound = False
+                        Exit For
                     End If
                 End If
             Next j
@@ -1786,19 +1792,10 @@ Function GetEventEndDate(timelineEvents() As Variant, eventIndex As Integer) As 
     End If
 End Function
 
-Sub MoveEventToHigherLane(ByRef eventLanes() As Integer, eventIndex As Integer, newLane As Integer)
-    ' Move an event to a higher lane number
+Sub MoveEventToHigherLane(ByRef eventLanes() As Integer, eventIndex As Integer, newLane As Integer, ByRef maxLaneUsed As Integer)
+    ' Move an event to a higher lane number and track the maximum lane used
     eventLanes(eventIndex) = newLane
-    
-    ' Check if this creates new conflicts and recursively resolve them
-    Dim i As Integer
-    For i = 0 To UBound(eventLanes)
-        If i <> eventIndex And eventLanes(i) = newLane Then
-            ' Another event is already in this lane, move it up
-            Call MoveEventToHigherLane(eventLanes, i, newLane + 1)
-            Exit For
-        End If
-    Next i
+    If newLane > maxLaneUsed Then maxLaneUsed = newLane
 End Sub
 
 Sub CalculateEventExtendedBounds(baseStartX As Single, baseEndX As Single, eventType As String, _
@@ -1953,13 +1950,19 @@ End Function
 
 Function CalculateDynamicSwimlaneHeight(requiredLanes As Integer, laneHeight As Integer, baseSwimlaneHeight As Integer) As Single
     ' Centralized function for calculating swimlane height based on required lanes
-    ' Replaces duplicate calculation logic throughout the codebase
-    ' Formula: (requiredLanes * laneHeight), with minimum height constraint
+    ' Matches actual lane spacing from PlaceEventsInSwimlane:
+    ' - swimlaneContentPadding (2pt) at top
+    ' - 35pt per lane (worst case - labels on top)
+    ' - Element extends 8pt below lane center
+    ' - 5pt bottom padding
     
     Dim calculatedHeight As Single
-    calculatedHeight = (requiredLanes * laneHeight)
+    Dim laneSpacing As Single: laneSpacing = 35 ' Matches PlaceEventsInSwimlane worst case
     
-    ' Apply minimum height constraint
+    ' Formula: padding + lanes*spacing + element_half_height + bottom_buffer
+    calculatedHeight = 2 + (requiredLanes * laneSpacing) + 8 + 5
+    
+    ' Apply minimum height constraint (for empty swimlanes)
     If calculatedHeight < baseSwimlaneHeight Then calculatedHeight = baseSwimlaneHeight
     
     CalculateDynamicSwimlaneHeight = calculatedHeight
@@ -2041,7 +2044,7 @@ Function CalculateSwimlaneActualHeight(events() As Variant, ByRef eventLanes() A
     CalculateSwimlaneActualHeight = maxBottomPosition
 End Function
 
-Function CalculateSwimlaneRequiredLanes(events() As Variant, ByRef eventLanes() As Integer, config As TimelineConfig) As Integer
+Function CalculateSwimlaneRequiredLanes(events() As Variant, ByRef eventLanes() As Integer, config As TimelineConfig, dateRange As TimelineDateRange) As Integer
     ' Simplified to directly return lane count from lane assignment
     ' This eliminates duplicate logic and uses the actual lane assignments
     
@@ -2050,13 +2053,9 @@ Function CalculateSwimlaneRequiredLanes(events() As Variant, ByRef eventLanes() 
         Exit Function
     End If
     
-    ' Use temporary variables for lane assignment
-    Dim tempDateRange As TimelineDateRange
-    tempDateRange.scaleFactor = 1  ' Placeholder for overlap detection
-    tempDateRange.minDate = Date   ' Placeholder
-    
+    ' Use actual dateRange for accurate overlap detection based on visual positioning
     Dim totalLanes As Integer
-    totalLanes = AssignLanesToEvents(events, eventLanes, tempDateRange, config)
+    totalLanes = AssignLanesToEvents(events, eventLanes, dateRange, config)
     
     ' Return actual lane count (minimum 1)
     CalculateSwimlaneRequiredLanes = IIf(totalLanes > 0, totalLanes, 0)
@@ -2113,6 +2112,10 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
                            swimlaneOrg As SwimlaneOrganization, timelineData() As Variant, requiredSlides As Integer)
     ' Create multiple slides with distributed swimlanes, duplicating calendar and phase sections on each slide
     
+    ' Calculate scale factor FIRST before any swimlane height calculations
+    dateRange.scaleFactor = (config.slideWidth - config.swimlaneHeaderWidth - config.axisPadding) / _
+                           (dateRange.maxDate - dateRange.minDate)
+    
     Dim availableHeight As Single
     availableHeight = config.slideHeight - config.timelineAxisY - config.bottomMarginForSlides ' Available height per slide
     
@@ -2127,7 +2130,9 @@ Sub CreateMultiSlideTimeline(config As TimelineConfig, dateRange As TimelineDate
             Dim tempEvents() As Variant: tempEvents = swimlaneOrg.swimlaneEvents(i)
             Dim tempEventLanes() As Integer
             ReDim tempEventLanes(0 To UBound(tempEvents))
-            requiredLanes = CalculateSwimlaneRequiredLanes(tempEvents, tempEventLanes, config)
+            ' Call AssignLanesToEvents directly for consistent lane count
+            requiredLanes = AssignLanesToEvents(tempEvents, tempEventLanes, dateRange, config)
+            If requiredLanes < 1 Then requiredLanes = 1
         End If
         swimlaneHeights(i) = CalculateDynamicSwimlaneHeight(requiredLanes, config.laneHeight, config.swimlaneHeight)
     Next i
@@ -2185,7 +2190,7 @@ Sub CreateSingleSlideWithSwimlanes(config As TimelineConfig, dateRange As Timeli
     
     ' === DUPLICATE PHASES SECTION ===
     Call RenderPhasesInDedicatedArea(sld, config, dateRange, timelineData)    ' === RENDER SUBSET OF SWIMLANES ===
-    Call RenderSwimlanes(sld, config, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
+    Call RenderSwimlanes(sld, config, swimlaneOrg, dateRange, startSwimlaneIndex, endSwimlaneIndex)
     Call RenderSwimlaneEvents(sld, config, dateRange, swimlaneOrg, startSwimlaneIndex, endSwimlaneIndex)
     
     ' Add slide number indicator if multiple slides
